@@ -1,5 +1,5 @@
 import anthropic from '../../lib/anthropic';
-import prisma from '../../lib/prisma';
+import {prisma} from '../../lib/prisma';
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
