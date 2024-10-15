@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         await sendLog("Selecting 4 recipes...");
         const selectRecipesPrompt = `
         You are tasked with selecting 4 healthy and diverse recipes from the following list of URLs:
-        ${recipes.map((recipe, index) => `${index + 1}. ${recipe.url}`).join('\n')}
+        ${recipes.map((recipe: {url: string}, index:number) => `${index + 1}. ${recipe.url}`).join('\n')}
 
         Please select 4 recipes based on the following criteria:
         a. Choose healthy recipes that likely include a variety of nutrients
