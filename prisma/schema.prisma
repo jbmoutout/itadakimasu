@@ -12,6 +12,7 @@ model Recipe {
   id        Int      @id @default(autoincrement())
   url       String
   createdAt DateTime @default(now())
+  userId    Int?
 }
 
 model ShoppingList {
@@ -19,4 +20,13 @@ model ShoppingList {
   data      Json
   checked   Boolean @default(false)
   createdAt DateTime @default(now())
+  userId    Int?
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

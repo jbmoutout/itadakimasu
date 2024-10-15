@@ -12,6 +12,8 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import Login from "@/components/Login";
+import Signup from "@/components/Signup";
 
 type ShoppingListData = {
   selectedRecipes: string[];
@@ -32,14 +34,30 @@ export default function Home() {
   const [newRecipeUrl, setNewRecipeUrl] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [showLogin, setShowLogin] = useState<boolean>(true);
 
   useEffect(() => {
     fetchLastShoppingList();
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setIsLoggedIn(true);
+      fetchLastShoppingList();
+    }
+  }, []);
+
   const fetchLastShoppingList = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
     try {
-      const res = await fetch("/api/last-shopping-list");
+      const res = await fetch("/api/last-shopping-list", {
+        headers: {
+          Authorization: `Bearer ${token}`, // token should be stored securely, e.g., in localStorage
+        },
+      });
       if (!res.ok) {
         throw new Error("Failed to fetch last shopping list");
       }
@@ -51,10 +69,17 @@ export default function Home() {
   };
 
   const generateShoppingList = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
     setIsLoading(true);
     setLogs([]);
     try {
-      const response = await fetch("/api/generate-shopping-list");
+      const response = await fetch("/api/generate-shopping-list", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       if (!response.ok) {
         throw new Error("Failed to fetch shopping list");
       }
@@ -92,10 +117,15 @@ export default function Home() {
   };
 
   const addRecipe = async (e: React.FormEvent) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
     e.preventDefault();
     const res = await fetch("/api/add-recipe", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ url: newRecipeUrl }),
     });
     const data = await res.json();
@@ -113,7 +143,8 @@ export default function Home() {
   };
 
   const toggleIngredient = async (category: string, index: number) => {
-    if (!shoppingListData) return;
+    const token = localStorage.getItem("token");
+    if (!shoppingListData || !token) return;
 
     const updatedShoppingList = { ...shoppingListData };
     updatedShoppingList.shoppingList[category][index].checked =
@@ -124,7 +155,10 @@ export default function Home() {
     try {
       const response = await fetch("/api/update-shopping-list", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(updatedShoppingList),
       });
 
@@ -135,6 +169,39 @@ export default function Home() {
       console.error("Error updating shopping list:", error);
     }
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setIsLoggedIn(false);
+    setShoppingListData(null);
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="p-10">
+        <div className="flex align-middle justify-between">
+          <div className="flex align-middle gap-2">
+            <Image
+              src="/images/udon.png"
+              alt="udon"
+              width={30}
+              height={0}
+              style={{ width: "30px", height: "auto" }}
+            />
+            <h1 className="text-3xl">Itadakimasu</h1>
+          </div>
+        </div>
+        <div className="mt-4">
+          {showLogin ? <Login /> : <Signup />}
+          <Button onClick={() => setShowLogin(!showLogin)}>
+            {showLogin
+              ? "Need an account? Sign up"
+              : "Already have an account? Log in"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-10">
@@ -149,6 +216,7 @@ export default function Home() {
           />
           <h1 className="text-3xl">Itadakimasu</h1>
         </div>
+        <Button onClick={handleLogout}>Logout</Button>
       </div>
       <div className="mt-4">
         <form onSubmit={addRecipe} className="flex align-middle gap-1">

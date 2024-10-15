@@ -3,8 +3,9 @@ import prisma from '../../lib/prisma';
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { jwtVerify } from 'jose';
 
-export async function GET() {
+export async function GET(request: Request) {
   const encoder = new TextEncoder();
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
@@ -15,6 +16,14 @@ export async function GET() {
 
   const generateShoppingList = async () => {
     try {
+        const token = request.headers.get('Authorization')?.split(' ')[1];
+        if (!token) {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+    
+        const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
+        const userId = payload.userId as number;
+    
         await sendLog("Fetching recipes from database...");
         const recipes = await prisma.recipe.findMany();
         await sendLog(`Found ${recipes.length} recipes.`);
@@ -78,8 +87,6 @@ export async function GET() {
                 }
             })
         );
-
-        console.log(recipeContents);
 
         await sendLog("Generating shopping list...");
         const generateShoppingListPrompt = `
@@ -166,7 +173,8 @@ export async function GET() {
         await sendLog("Saving shopping list to database...");
         await prisma.shoppingList.create({
             data: {
-                data: shoppingList
+                data: shoppingList,
+                userId: userId
             }
         });
         await sendLog("Shopping list saved to database.");
