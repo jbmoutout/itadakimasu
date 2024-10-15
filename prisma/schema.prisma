@@ -1,0 +1,22 @@
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Recipe {
+  id        Int      @id @default(autoincrement())
+  url       String
+  createdAt DateTime @default(now())
+}
+
+model ShoppingList {
+  id        Int      @id @default(autoincrement())
+  data      Json
+  checked   Boolean @default(false)
+  createdAt DateTime @default(now())
+}

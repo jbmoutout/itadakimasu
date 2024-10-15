@@ -1,95 +1,280 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import Image from "next/image";
-import styles from "./page.module.css";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+
+type ShoppingListData = {
+  selectedRecipes: string[];
+  shoppingList: {
+    [category: string]: {
+      ingredient: string;
+      quantity: number;
+      unit: string;
+      recipes: string[];
+      checked: boolean;
+    }[];
+  };
+};
 
 export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [shoppingListData, setShoppingListData] =
+    useState<ShoppingListData | null>(null);
+  const [newRecipeUrl, setNewRecipeUrl] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [logs, setLogs] = useState<string[]>([]);
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    fetchLastShoppingList();
+  }, []);
+
+  const fetchLastShoppingList = async () => {
+    try {
+      const res = await fetch("/api/last-shopping-list");
+      if (!res.ok) {
+        throw new Error("Failed to fetch last shopping list");
+      }
+      const data = await res.json();
+      setShoppingListData(data.shoppingList);
+    } catch (error) {
+      console.error("Error fetching last shopping list:", error);
+    }
+  };
+
+  const generateShoppingList = async () => {
+    setIsLoading(true);
+    setLogs([]);
+    try {
+      const response = await fetch("/api/generate-shopping-list");
+      if (!response.ok) {
+        throw new Error("Failed to fetch shopping list");
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Failed to get response reader");
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split("\n").filter((line) => line.trim() !== "");
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.log) {
+              setLogs((prevLogs) => [...prevLogs, data.log]);
+            } else if (data.shoppingList) {
+              setShoppingListData(data.shoppingList);
+            }
+          } catch (error) {
+            console.error("Error parsing JSON:", error);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error generating shopping list:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const addRecipe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/add-recipe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: newRecipeUrl }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setNewRecipeUrl("");
+      alert("Recipe added successfully!");
+    } else if (
+      res.status === 400 &&
+      data.error === "Recipe with this URL already exists"
+    ) {
+      alert("This recipe URL already exists in your collection.");
+    } else {
+      alert("Failed to add recipe. Please try again.");
+    }
+  };
+
+  const toggleIngredient = async (category: string, index: number) => {
+    if (!shoppingListData) return;
+
+    const updatedShoppingList = { ...shoppingListData };
+    updatedShoppingList.shoppingList[category][index].checked =
+      !updatedShoppingList.shoppingList[category][index].checked;
+
+    setShoppingListData(updatedShoppingList);
+
+    try {
+      const response = await fetch("/api/update-shopping-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedShoppingList),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update shopping list");
+      }
+    } catch (error) {
+      console.error("Error updating shopping list:", error);
+    }
+  };
+
+  return (
+    <div className="p-10">
+      <div className="flex align-middle justify-between">
+        <div className="flex align-middle gap-2">
+          <Image
+            src="/images/udon.png"
+            alt="udon"
+            width={30}
+            height={0}
+            style={{ width: "30px", height: "auto" }}
+          />
+          <h1 className="text-3xl">Itadakimasu</h1>
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </div>
+      <div className="mt-4">
+        <form onSubmit={addRecipe} className="flex align-middle gap-1">
+          <Input
+            type="url"
+            value={newRecipeUrl}
+            onChange={(e) => setNewRecipeUrl(e.target.value)}
+            placeholder="Enter recipe URL"
+            required
           />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+          <div>
+            <Button type="submit">Add Recipe</Button>
+          </div>
+        </form>
+      </div>
+
+      {isLoading && (
+        <div className="mt-4">
           <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+            src="/images/loading.gif"
+            alt="Loading..."
+            width={500}
+            height={0}
+            style={{ width: "500px", height: "auto" }}
           />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          <div className="bg-gray-900 text-white p-6 mt-4 font-mono text-sm">
+            <h3>Server Logs</h3>
+            <ul className="mt-2">
+              {logs.map((log, index) => (
+                <li key={index}>{log}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+      {shoppingListData && !isLoading && (
+        <div className="mt-4">
+          <Accordion type="single" collapsible>
+            <AccordionItem value="item-1">
+              <div className="flex items-baseline justify-between">
+                <AccordionTrigger>
+                  {" "}
+                  <h3 className="text-xl font-bold">Recipes</h3>
+                </AccordionTrigger>
+                <Button
+                  variant="outline"
+                  onClick={generateShoppingList}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Generating..." : "New List"}
+                </Button>
+              </div>
+              <AccordionContent>
+                <ul>
+                  {shoppingListData.selectedRecipes.map((recipe, index) => {
+                    const urlMatch = recipe.match(/(https?:\/\/[^\s]+)/);
+                    const url = urlMatch ? urlMatch[0] : "";
+                    const recipeName = recipe.replace(url, "").trim();
+
+                    return (
+                      <li key={index}>
+                        - {recipeName}{" "}
+                        {url && (
+                          <Link
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            (Link)
+                          </Link>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+
+          <h3 className="text-xl font-bold mt-4">List</h3>
+
+          {Object.entries(shoppingListData.shoppingList)
+            .sort(([a], [b]) => {
+              if (a.includes("Pantry")) return 1;
+              if (b.includes("Pantry")) return -1;
+              return a.localeCompare(b);
+            })
+            .map(
+              ([category, items]) =>
+                items.length > 0 && (
+                  <div key={category} className="mt-2">
+                    <p className="text-md font-bold">{category}</p>
+                    <ul>
+                      {items.map((item, index) => (
+                        <>
+                          <li
+                            key={index}
+                            className="flex items-center space-x-2"
+                          >
+                            <Checkbox
+                              checked={item.checked}
+                              onCheckedChange={() =>
+                                toggleIngredient(category, index)
+                              }
+                            />
+                            <span
+                              className={
+                                item.checked ? "line-through text-gray-500" : ""
+                              }
+                            >
+                              {item.ingredient}
+                              {item.quantity &&
+                                item.quantity !== 0 &&
+                                `: ${item.quantity} `}
+                              {item.unit && `${item.unit}`}
+                            </span>
+                          </li>
+                          <p className="text-xs italic">{item.recipes}</p>
+                        </>
+                      ))}
+                    </ul>
+                  </div>
+                )
+            )}
+        </div>
+      )}
     </div>
   );
 }
