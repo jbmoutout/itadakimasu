@@ -9,10 +9,16 @@ generator client {
 }
 
 model Recipe {
-  id        Int      @id @default(autoincrement())
-  url       String
-  createdAt DateTime @default(now())
-  userId    Int?
+  id          Int                @id @default(autoincrement())
+  url         String
+  originUrl   String?
+  title       String?
+  description String?
+  image       String?
+  createdAt   DateTime           @default(now())
+  userId      Int?
+  ingredients RecipeIngredient[]
+  ratings     Rating[]
 }
 
 model ShoppingList {
@@ -29,4 +35,51 @@ model User {
   password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  ratings  Rating[]
+
+}
+
+model Ingredient {
+  id          Int                 @id @default(autoincrement())
+  name        String              @unique
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  recipes     RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  id           Int        @id @default(autoincrement())
+  recipeId     Int
+  ingredientId Int
+  quantity     Float?
+  unit         String?
+  recipe       Recipe     @relation(fields: [recipeId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([recipeId, ingredientId])
+}
+
+model Rating {
+  id        Int          @id @default(autoincrement())
+  recipeId  Int
+  userId    Int
+  value     RatingValue  @default(NONE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  recipe Recipe @relation(fields: [recipeId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([recipeId, userId])
+}
+
+enum RatingValue {
+  NONE
+  ONE
+  TWO
+  THREE
+  FOUR
+  FIVE
 }

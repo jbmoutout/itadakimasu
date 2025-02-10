@@ -1,198 +1,214 @@
-import anthropic from '../../lib/anthropic';
-import {prisma} from '../../lib/prisma';
-import { NextResponse } from 'next/server';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import { jwtVerify } from 'jose';
+import { NextResponse } from "next/server";
+import { prisma } from "../../lib/prisma";
+import { jwtVerify } from "jose";
+import convert, { Unit } from "convert-units";
 
-export async function GET(request: Request) {
+const convertToBaseUnit = (
+  quantity: number,
+  unit: string
+): { quantity: number; unit: string } => {
+  try {
+    // Common volume units
+    if (["ml", "l", "cup", "tbsp", "tsp"].includes(unit)) {
+      const unitMap: { [key: string]: Unit } = {
+        ml: "ml",
+        l: "l",
+        cup: "cup",
+        tbsp: "Tbs",
+        tsp: "tsp",
+      } as const;
+      return {
+        quantity: convert(quantity).from(unitMap[unit]).to("ml"),
+        unit: "ml",
+      };
+    }
+    // Common weight units
+    if (["g", "kg", "oz", "lb"].includes(unit)) {
+      const weightMap: { [key: string]: Unit } = {
+        g: "g",
+        kg: "kg",
+        oz: "oz",
+        lb: "lb",
+      } as const;
+      return {
+        quantity: convert(quantity).from(weightMap[unit]).to("g"),
+        unit: "g",
+      };
+    }
+    // If unit is not convertible, return as is
+    return { quantity, unit };
+  } catch (error) {
+    // If conversion fails, return original values
+    console.log(error);
+    return { quantity, unit };
+  }
+};
+
+export async function POST(request: Request) {
   const encoder = new TextEncoder();
   const stream = new TransformStream();
   const writer = stream.writable.getWriter();
 
   const sendLog = async (log: string) => {
-    await writer.write(encoder.encode(JSON.stringify({ log }) + '\n'));
+    await writer.write(encoder.encode(JSON.stringify({ log }) + "\n"));
   };
 
   const generateShoppingList = async () => {
     try {
-        const token = request.headers.get('Authorization')?.split(' ')[1];
-        if (!token) {
-          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-    
-        const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-        const userId = payload.userId as number;
-    
-        await sendLog("Fetching recipes from database...");
-        const recipes = await prisma.recipe.findMany();
-        await sendLog(`Found ${recipes.length} recipes.`);
-
-        await sendLog("Selecting 4 recipes...");
-        const selectRecipesPrompt = `
-        You are tasked with selecting 4 healthy and diverse recipes from the following list of URLs:
-        ${recipes.map((recipe: {url: string}, index:number) => `${index + 1}. ${recipe.url}`).join('\n')}
-
-        Please select 4 recipes based on the following criteria:
-        a. Choose healthy recipes that likely include a variety of nutrients
-        b. Ensure diversity in the types of dishes (e.g., different cuisines, meal types, seasons, location: France)
-        c. Consider recipes that likely have a mix of ingredients (proteins, vegetables, grains, etc.)
-
-        Respond with only the numbers of the 4 selected recipes, separated by commas. For example: 1,3,5,7
-        `;
-
-        const selectRecipesMessage = await anthropic.messages.create({
-            model: 'claude-3-sonnet-20240229',
-            max_tokens: 100,
-            messages: [
-                {
-                    role: 'user',
-                    content: selectRecipesPrompt
-                }
-            ]
-        });
-
-        // @ts-expect-error ehh this is fine
-        const selectedRecipeIndices = selectRecipesMessage.content[0]?.text?.trim().split(',').map(Number);
-        const selectedRecipes = selectedRecipeIndices.map((index:number) => recipes[index - 1]);
-        await sendLog(`Selected recipes: ${selectedRecipeIndices.join(', ')}`);
-
-        await sendLog("Fetching content for selected recipes...");
-        const recipeContents = await Promise.all(
-            selectedRecipes.map(async (recipe: { url: string }) => {
-                try {
-                    const response = await axios.get(recipe.url);
-                    const $ = cheerio.load(response.data);
-
-                    // Remove script, style, and SVG elements
-                    $('script, style, svg').remove();
-
-                    // Extract text content
-                    let text = $('body').text();
-
-                    // Clean up the text
-                    text = text.replace(/\s+/g, ' ').trim();
-
-                    await sendLog(`Fetched and extracted text content for ${recipe.url}`);
-                    return {
-                        url: recipe.url,
-                        content: text.substring(0, 10000) // Limit content to 10000 characters
-                    };
-                } catch (error) {
-                    await sendLog(`Failed to fetch or extract content for ${recipe.url}: ${error}`);
-                    return {
-                        url: recipe.url,
-                        content: 'Failed to fetch or extract recipe content'
-                    };
-                }
-            })
-        );
-
-        await sendLog("Generating shopping list...");
-        const generateShoppingListPrompt = `
-            You are tasked with generating a comprehensive shopping list based on 4 healthy and diverse recipes. Follow these steps meticulously:
-
-            1. Analyze the following recipes:
-            ${recipeContents.map((recipe:{url: string, content:string}, index:number) => `
-            Recipe ${index + 1}: ${recipe.url}
-            ${recipe.content}
-            `).join('\n')}
-
-            2. For each recipe:
-              a. Carefully extract ALL ingredients directly from the recipe's ingredient list
-              b. Include every single ingredient mentioned, regardless of quantity or perceived importance
-              c. Do not modify, substitute, or add any ingredients not listed in the original recipe
-              d. Pay special attention to ingredients that might be easily overlooked, such as seasonings, oils, or garnishes
-
-            3. Compile a thorough shopping list with all the ingredients from the 4 recipes:
-              a. You must carefully combine similar ingredients and their quantities - do not duplicate items
-
-            4. Present your final output as a JSON object with the following structure:
-            <output>
-            {
-              "selectedRecipes": [
-                "Recipe Name 1 <recipe_url>",
-                "Recipe Name 2 <recipe_url>",
-                "Recipe Name 3 <recipe_url>",
-                "Recipe Name 4 <recipe_url>"
-              ],
-              "shoppingList": {
-                "Category1": [
-                  {
-                    "ingredient": "Ingredient 1",
-                    "quantity": 0,
-                    "unit": "unit",
-                    "recipes": "Recipe Name 1, Recipe Name 3"
-                  },
-                  {
-                    "ingredient": "Ingredient 2",
-                    "quantity": 0,
-                    "unit": "unit",
-                    "recipes": "Recipe Name 1, Recipe Name 3"
-                  }
-                ],
-                "Category2": [
-                  {
-                    "ingredient": "Ingredient 3",
-                    "quantity": 0,
-                    "unit": "unit",
-                    "recipes": "Recipe Name 1, Recipe Name 3"
-                  },
-                  {
-                    "ingredient": "Ingredient 4",
-                    "quantity": 0,
-                    "unit": "unit",
-                    "recipes": "Recipe Name 1, Recipe Name 3"
-                  }
-                ]
-              }
-            }
-            </output>
-
-            Critical: Ensure absolute completeness in your ingredient list. Double-check that you have not missed any ingredients, no matter how small or seemingly insignificant. Only use the recipe content provided above. 
-            Do not add, remove, or substitute any ingredients from the original recipes. Your shopping list must accurately reflect ALL ingredients needed for the 4 selected recipes, without exception. 
-            Replace the placeholder values in the JSON structure with the actual data from your thorough analysis.
-
-            Only answer with the JSON object containing the selected recipes and the comprehensive shopping list. Do not include any additional information or explanations.        `;
-
-        const generateShoppingListMessage = await anthropic.messages.create({
-            model: 'claude-3-sonnet-20240229',
-            max_tokens: 3000,
-            messages: [
-                {
-                    role: 'user',
-                    content: generateShoppingListPrompt
-                }
-            ]
-        });
-
-        // @ts-expect-error ehh this is fine
-        const shoppingList = JSON.parse(generateShoppingListMessage.content[0]?.text?.trim() || '{}');
-        await sendLog("Shopping list generated successfully.");
-
-        await sendLog("Saving shopping list to database...");
-        await prisma.shoppingList.create({
-            data: {
-                data: shoppingList,
-                userId: userId
-            }
-        });
-        await sendLog("Shopping list saved to database.");
-
-        await writer.write(encoder.encode(JSON.stringify({ shoppingList }) + '\n'));
-      } catch (error) {
-        await sendLog(`Error: ${error}`);
-      } finally {
-        await writer.close();
+      const token = request.headers.get("Authorization")?.split(" ")[1];
+      if (!token) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
-  }
+
+      const { payload } = await jwtVerify(
+        token,
+        new TextEncoder().encode(process.env.JWT_SECRET)
+      );
+      const userId = payload.userId as number;
+
+      const { recipeIds } = await request.json();
+      if (!recipeIds || !Array.isArray(recipeIds)) {
+        throw new Error("Recipe IDs are required");
+      }
+
+      await sendLog("Fetching recipes from database...");
+      const recipes = await prisma.recipe.findMany({
+        where: {
+          id: {
+            in: recipeIds,
+          },
+          userId: userId,
+        },
+        include: {
+          ingredients: {
+            include: {
+              ingredient: true,
+            },
+          },
+        },
+      });
+
+      await sendLog(`Found ${recipes.length} recipes.`);
+
+      // Create shopping list structure
+      const shoppingListData: {
+        selectedRecipes: any[];
+        items: Array<{
+          ingredient: string;
+          quantity: number;
+          unit: string;
+          recipes: string;
+        }>;
+      } = {
+        selectedRecipes: recipes,
+        items: [],
+      };
+
+      // Process ingredients from all recipes
+      const ingredientMap = new Map();
+
+      const normalizeIngredientName = (name: string): string => {
+        return name.toLowerCase().trim();
+      };
+
+      for (const recipe of recipes) {
+        for (const recipeIngredient of recipe.ingredients) {
+          const { ingredient, quantity, unit } = recipeIngredient;
+          const normalizedName = normalizeIngredientName(ingredient.name);
+
+          // Use only the normalized name as key (removing unit from key)
+          const key = normalizedName;
+
+          if (ingredientMap.has(key)) {
+            const existing = ingredientMap.get(key);
+            const converted = convertToBaseUnit(
+              quantity || 0,
+              (unit || "unit").toLowerCase()
+            );
+            const existingConverted = convertToBaseUnit(
+              existing.quantity,
+              existing.unit
+            );
+
+            if (converted.unit === existingConverted.unit) {
+              existing.quantity =
+                existingConverted.quantity + converted.quantity;
+              existing.unit = converted.unit;
+            } else {
+              // If units can't be converted, keep them separate with a '+'
+              existing.quantity = existing.quantity;
+              existing.unit = `${existing.unit} + ${quantity}${unit || "unit"}`;
+            }
+
+            existing.recipes.add(recipe.title || recipe.url);
+            if (!existing.nameCounts[ingredient.name]) {
+              existing.nameCounts[ingredient.name] = 1;
+            } else {
+              existing.nameCounts[ingredient.name]++;
+            }
+            const mostFrequentName = Object.entries<number>(
+              existing.nameCounts
+            ).reduce<[string, number]>(
+              (a, b) => (a[1] > b[1] ? a : b),
+              ["", 0]
+            )[0];
+            existing.ingredient = mostFrequentName;
+          } else {
+            const converted = convertToBaseUnit(
+              quantity || 0,
+              (unit || "unit").toLowerCase()
+            );
+            ingredientMap.set(key, {
+              ingredient: ingredient.name,
+              quantity: Number(converted.quantity.toFixed(2)),
+              unit: converted.unit,
+              recipes: new Set([recipe.title || recipe.url]),
+              nameCounts: { [ingredient.name]: 1 },
+            });
+          }
+        }
+      }
+
+      // Convert the Map to the final shopping list format
+      shoppingListData.items = Array.from(ingredientMap.values()).map(
+        (item) => ({
+          ingredient: item.ingredient,
+          quantity: item.quantity,
+          unit: item.unit,
+          recipes: Array.from(item.recipes).join(", "),
+        })
+      );
+
+      await sendLog("Shopping list generated successfully.");
+
+      await sendLog("Saving shopping list to database...");
+      await prisma.shoppingList.create({
+        data: {
+          data: shoppingListData,
+          userId: userId,
+        },
+      });
+      await sendLog("Shopping list saved to database.");
+
+      await writer.write(
+        encoder.encode(
+          JSON.stringify({ shoppingList: shoppingListData }) + "\n"
+        )
+      );
+    } catch (error) {
+      await sendLog(`Error: ${error}`);
+    } finally {
+      await writer.close();
+    }
+  };
+
   generateShoppingList();
 
   return new NextResponse(stream.readable, {
     headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
     },
   });
 }

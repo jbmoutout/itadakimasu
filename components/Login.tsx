@@ -17,7 +17,7 @@ const Login = () => {
       const data = await response.json();
       if (response.ok) {
         localStorage.setItem("token", data.token);
-        // Redirect or update state to show logged in status
+        window.location.href = "/";
       } else {
         alert(data.error);
       }
