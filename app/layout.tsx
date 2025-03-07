@@ -1,35 +1,24 @@
-import type { Metadata } from "next";
-import localFont from "next/font/local";
 import "./globals.css";
+import { Inter } from "next/font/google";
+import { SidePanel } from "./components/layout/SidePanel";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+const inter = Inter({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "itadakimasu",
-  description: "miam miam",
-  icons: {
-    icon: "/images/favicon.ico",
-  },
+export const metadata = {
+  title: "Itadakimasu - Recipe Manager",
+  description: "Manage your recipes and ingredients",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={inter.className}>
         {children}
+        <SidePanel />
       </body>
     </html>
   );

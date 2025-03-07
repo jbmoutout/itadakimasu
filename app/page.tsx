@@ -1,130 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import Login from "@/components/Login";
-import Signup from "@/components/Signup";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-
-type ShoppingListData = {
-  selectedRecipes: string[];
-  shoppingList: {
-    [category: string]: {
-      ingredient: string;
-      quantity: number;
-      unit: string;
-      recipes: string[];
-      checked: boolean;
-    }[];
-  };
-};
+import { Recipe, ShoppingList } from "@/types";
+import { Header } from "./components/layout/Header";
+import { AuthScreen } from "./components/auth/AuthScreen";
+import { LoadingOverlay } from "./components/common/LoadingOverlay";
+import { ShoppingList as ShoppingListComponent } from "./components/shopping/ShoppingList";
+import { RecipeCard } from "./components/recipes/RecipeCard";
+import { AddRecipeForm } from "./components/recipes/AddRecipeForm";
+import { Button } from "@/components/ui/button";
+import { SidePanel } from "./components/layout/SidePanel";
 
 export default function Home() {
-  const router = useRouter(); // Add this line near other hooks
-
-  const [shoppingListData, setShoppingListData] =
-    useState<ShoppingListData | null>(null);
-  const [newRecipeUrl, setNewRecipeUrl] = useState<string>("");
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isAuthChecking, setIsAuthChecking] = useState(true); // Add this line
-  const [logs, setLogs] = useState<string[]>([]);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [showLogin, setShowLogin] = useState<boolean>(true);
+  const router = useRouter();
+  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipes, setSelectedRecipes] = useState<number[]>([]);
-  const [recipes, setRecipes] = useState<
-    Array<{
-      id: number;
-      url: string;
-      createdAt: string;
-      title?: string;
-      image?: string;
-      ingredients: Array<{
-        ingredient: {
-          name: string;
-        };
-        quantity?: number;
-        unit?: string;
-      }>;
-    }>
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [savedRecipes, setSavedRecipes] = useState<Recipe[]>([]);
+  const [gatheredIngredients, setGatheredIngredients] = useState<
+    Array<{ ingredient: string; quantity: number; unit: string }>
   >([]);
-  const [previewMetadata, setPreviewMetadata] = useState<{
-    title?: string;
-    description?: string;
-    image?: string;
-  } | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
-  const fetchUrlMetadata = async (url: string, recipeId: number) => {
-    setIsLoadingPreview(true);
+  const fetchRecipes = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
     try {
-      // Validate URL first
-      try {
-        new URL(url);
-      } catch (urlError) {
-        const errorMessage =
-          urlError instanceof Error ? urlError.message : "Unknown error";
-        throw new Error(`Invalid URL format: ${errorMessage}`);
-      }
-
-      const res = await fetch(
-        `/api/preview-metadata?url=${encodeURIComponent(
-          url
-        )}&recipeId=${recipeId}`
-      );
-
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (parseError) {
-        console.error("Failed to parse response:", text);
-        throw new Error(
-          `Invalid JSON response: ${
-            parseError instanceof Error ? parseError.message : "Unknown error"
-          }`
-        );
-      }
-
-      if (!res.ok) {
-        throw new Error(
-          `HTTP ${res.status}: ${data.error}${
-            data.details ? ` - ${data.details}` : ""
-          }`
-        );
-      }
-
-      if (!data.title && !data.description && !data.image) {
-        console.warn("No metadata found in response for URL:", url);
-      }
-
-      setPreviewMetadata(data);
-    } catch (error) {
-      console.error("Error fetching preview:", {
-        message: error instanceof Error ? error.message : "Unknown error",
-        url: url,
-        recipeId: recipeId,
+      const res = await fetch("/api/recipes", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setPreviewMetadata(null);
-    } finally {
-      setIsLoadingPreview(false);
-      setPreviewMetadata(null);
-    }
-  };
+      if (!res.ok) throw new Error("Failed to fetch recipes");
 
-  useEffect(() => {
-    fetchLastShoppingList();
-    fetchRecipes();
-  }, [isLoggedIn]);
+      const data = await res.json();
+      setRecipes(data);
+    } catch (error) {
+      console.error("Error fetching recipes:", error);
+    }
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -134,116 +50,46 @@ export default function Home() {
       router.refresh();
     }
     setIsAuthChecking(false);
-  }, []);
+  }, [router]);
 
-  const fetchRecipes = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setIsLoggedIn(false);
-      return;
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchLastShoppingList();
+      fetchRecipes();
     }
-    try {
-      const res = await fetch("/api/recipes", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        throw new Error("Failed to fetch recipes");
-      }
-      const data = await res.json();
-      setRecipes(data.recipes);
-
-      // Check each recipe for ingredients and metadata
-      for (const recipe of data.recipes) {
-        if (!recipe.image) {
-          fetchUrlMetadata(recipe.url, recipe.id);
-        }
-
-        // If recipe has no ingredients, extract them
-        if (!recipe.ingredients || recipe.ingredients.length === 0) {
-          setIsLoading(true);
-          setLogs([]);
-          try {
-            const extractRes = await fetch("/api/extract-ingredients", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ recipeId: recipe.id }),
-            });
-
-            if (!extractRes.ok) {
-              throw new Error("Failed to extract ingredients");
-            }
-
-            const reader = extractRes.body?.getReader();
-            if (!reader) {
-              throw new Error("Failed to get response reader");
-            }
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              const chunk = new TextDecoder().decode(value);
-              const lines = chunk
-                .split("\n")
-                .filter((line) => line.trim() !== "");
-
-              for (const line of lines) {
-                try {
-                  const data = JSON.parse(line);
-                  if (data.log) {
-                    setLogs((prevLogs) => [...prevLogs, data.log]);
-                  }
-                } catch (error) {
-                  console.error("Error parsing JSON:", error);
-                }
-              }
-            }
-          } catch (error) {
-            console.error("Error extracting ingredients:", error);
-          }
-        }
-      }
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error fetching recipes:", error);
-      setIsLoading(false);
-    }
-  };
+  }, [isLoggedIn, fetchRecipes]);
 
   const fetchLastShoppingList = async () => {
     const token = localStorage.getItem("token");
-    if (!token) {
-      setIsLoggedIn(false);
-      return;
-    }
+    if (!token) return;
+
     try {
       const res = await fetch("/api/last-shopping-list", {
-        headers: {
-          Authorization: `Bearer ${token}`, // token should be stored securely, e.g., in localStorage
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) {
-        throw new Error("Failed to fetch last shopping list");
-      }
+      if (!res.ok) throw new Error("Failed to fetch last shopping list");
+
       const data = await res.json();
-      setShoppingListData(data.shoppingList);
+      setShoppingList(data.shoppingList);
+      setSavedRecipes(data.shoppingList?.selectedRecipes || []);
     } catch (error) {
       console.error("Error fetching last shopping list:", error);
+      setSavedRecipes([]);
     }
   };
 
-  const generateShoppingList = async () => {
+  const saveShoppingList = async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
     setIsLoading(true);
-    setLogs([]);
+
     try {
+      const selectedRecipesData = recipes.filter((recipe) =>
+        selectedRecipes.includes(recipe.id)
+      );
+
+      // Generate shopping list
       const response = await fetch("/api/generate-shopping-list", {
         method: "POST",
         headers: {
@@ -253,104 +99,159 @@ export default function Home() {
         body: JSON.stringify({ recipeIds: selectedRecipes }),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch shopping list");
-      }
+      if (!response.ok) throw new Error("Failed to generate shopping list");
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get response reader");
-      }
+      const data = await response.json();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Ensure recipes are arrays in the shopping list items
+      const shoppingListWithArrays = {
+        ...data.shoppingList,
+        selectedRecipes: selectedRecipesData,
+        items: data.shoppingList.items.map((item: any) => ({
+          ...item,
+          recipes: Array.isArray(item.recipes) ? item.recipes : [item.recipes],
+        })),
+      };
 
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split("\n").filter((line) => line.trim() !== "");
-
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.log) {
-              setLogs((prevLogs) => [...prevLogs, data.log]);
-            } else if (data.shoppingList) {
-              setShoppingListData(data.shoppingList);
-            }
-          } catch (error) {
-            console.error("Error parsing JSON:", error);
-          }
-        }
-      }
+      // Update both the shopping list and saved recipes
+      setShoppingList(shoppingListWithArrays);
+      setSavedRecipes(selectedRecipesData);
+      setGatheredIngredients([]); // Reset gathered ingredients when saving new list
     } catch (error) {
-      console.error("Error generating shopping list:", error);
+      console.error("Error saving shopping list:", error);
     } finally {
       setIsLoading(false);
       setSelectedRecipes([]);
     }
   };
 
-  const addRecipe = async (e: React.FormEvent) => {
+  const handleToggleIngredient = async (index: number) => {
+    if (!shoppingList) return;
+
+    const ingredient = shoppingList.items[index];
+    setGatheredIngredients((prev) => [
+      ...prev,
+      {
+        ingredient: ingredient.ingredient,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+      },
+    ]);
+
+    const updatedList = {
+      ...shoppingList,
+      items: shoppingList.items.filter((_, i) => i !== index),
+    };
+    setShoppingList(updatedList);
+
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        await fetch("/api/update-shopping-list", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updatedList),
+        });
+      } catch (error) {
+        console.error("Error updating shopping list:", error);
+      }
+    }
+  };
+
+  const handleToggleRecipeStar = async (recipeId: number) => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    e.preventDefault();
 
     try {
-      // Add recipe
+      const response = await fetch(`/api/recipes/${recipeId}/star`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to toggle recipe star");
+
+      const updatedRecipe = await response.json();
+      setRecipes((prev) =>
+        prev.map((recipe) => (recipe.id === recipeId ? updatedRecipe : recipe))
+      );
+      setSavedRecipes((prev) =>
+        prev.map((recipe) => (recipe.id === recipeId ? updatedRecipe : recipe))
+      );
+    } catch (error) {
+      console.error("Error toggling recipe star:", error);
+    }
+  };
+
+  const handleRemoveRecipe = async (recipeId: number) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const response = await fetch(`/api/recipes/${recipeId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to remove recipe");
+
+      setRecipes((prev) => prev.filter((recipe) => recipe.id !== recipeId));
+      setSavedRecipes((prev) =>
+        prev.filter((recipe) => recipe.id !== recipeId)
+      );
+
+      // Update shopping list to remove ingredients from removed recipe
+      if (shoppingList) {
+        const updatedList = {
+          ...shoppingList,
+          items: shoppingList.items.filter(
+            (item) =>
+              !item.recipes.includes(
+                recipes.find((r) => r.id === recipeId)?.title || ""
+              )
+          ),
+        };
+        setShoppingList(updatedList);
+
+        await fetch("/api/update-shopping-list", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updatedList),
+        });
+      }
+    } catch (error) {
+      console.error("Error removing recipe:", error);
+    }
+  };
+
+  const handleAddRecipe = async (url: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    setIsLoading(true);
+
+    try {
       const res = await fetch("/api/add-recipe", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ url: newRecipeUrl }),
+        body: JSON.stringify({ url }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        setIsLoading(true);
-        setLogs([]);
-
-        // Extract ingredients with streaming response
-        const extractRes = await fetch("/api/extract-ingredients", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ recipeId: data.recipe.id }),
-        });
-
-        if (!extractRes.ok) {
-          throw new Error("Failed to extract ingredients");
-        }
-
-        const reader = extractRes.body?.getReader();
-        if (!reader) {
-          throw new Error("Failed to get response reader");
-        }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = new TextDecoder().decode(value);
-          const lines = chunk.split("\n").filter((line) => line.trim() !== "");
-
-          for (const line of lines) {
-            try {
-              const data = JSON.parse(line);
-              if (data.log) {
-                setLogs((prevLogs) => [...prevLogs, data.log]);
-              }
-            } catch (error) {
-              console.error("Error parsing JSON:", error);
-            }
-          }
-        }
-
-        setNewRecipeUrl("");
         fetchRecipes();
         alert("Recipe added successfully!");
       } else if (
@@ -362,332 +263,90 @@ export default function Home() {
         alert("Failed to add recipe. Please try again.");
       }
     } catch (error) {
-      console.error("Error in add recipe flow:", error);
+      console.error("Error adding recipe:", error);
       alert("An error occurred while adding the recipe.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleIngredient = async (index: number) => {
-    const token = localStorage.getItem("token");
-    if (!shoppingListData || !token) return;
-
-    const updatedShoppingList = { ...shoppingListData };
-    updatedShoppingList.shoppingList[index].checked =
-      !updatedShoppingList.shoppingList[index].checked;
-
-    setShoppingListData(updatedShoppingList);
-
-    try {
-      const response = await fetch("/api/update-shopping-list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(updatedShoppingList),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update shopping list");
-      }
-    } catch (error) {
-      console.error("Error updating shopping list:", error);
-    }
-  };
-
   const handleLogout = () => {
     localStorage.removeItem("token");
     setIsLoggedIn(false);
-    setShoppingListData(null);
+    setShoppingList(null);
   };
 
   if (isAuthChecking) {
-    return (
-      <div className="h-screen flex items-center justify-center">
-        <Image
-          src="/images/loading.gif"
-          alt="Loading..."
-          width={500}
-          height={0}
-          style={{ width: "500px", height: "auto" }}
-        />
-      </div>
-    );
+    return <LoadingOverlay />;
   }
 
   if (!isLoggedIn) {
-    return (
-      <div className="p-10">
-        <div className="flex align-middle justify-between">
-          <div className="flex align-middle gap-2">
-            <Image
-              src="/images/udon.png"
-              alt="udon"
-              width={30}
-              height={0}
-              style={{ width: "30px", height: "auto" }}
-            />
-            <h1 className="text-3xl">Itadakimasu</h1>
-          </div>
-        </div>
-        <div className="mt-4">
-          {showLogin ? <Login /> : <Signup />}
-          <Button onClick={() => setShowLogin(!showLogin)}>
-            {showLogin
-              ? "Need an account? Sign up"
-              : "Already have an account? Log in"}
-          </Button>
-        </div>
-      </div>
-    );
+    return <AuthScreen />;
   }
 
   return (
     <div className="pt-4">
-      <div className="flex align-middle justify-between fixed left-0 right-0 top-0 px-10 bg-white z-50 pt-4">
-        <div className="flex align-middle gap-2">
-          <p className="text-lg font-bold font-sans">itadakimasu</p>
-        </div>
-        <div className="flex justify-between items-center mb-4">
-          <Button
-            onClick={generateShoppingList}
-            disabled={selectedRecipes.length === 0 || isLoading}
-            variant="outline"
-          >
-            {isLoading ? "Generating..." : "Generate Shopping List"}
-          </Button>
-          <Button variant="ghost" onClick={handleLogout}>
-            Logout
-          </Button>
-        </div>
-      </div>
+      <Header
+        onSave={saveShoppingList}
+        onLogout={handleLogout}
+        isSaving={isLoading}
+        hasSelectedRecipes={selectedRecipes.length > 0}
+      />
+
       <div className="p-10 pt-20">
-        {isLoading && (
-          <div className="mt-4">
-            <Image
-              src="/images/loading.gif"
-              alt="Loading..."
-              width={500}
-              height={0}
-              style={{ width: "500px", height: "auto" }}
+        {isLoading && <LoadingOverlay />}
+
+        {/* {shoppingList && !isLoading && (
+          <ShoppingListComponent
+            data={shoppingList}
+            selectedRecipes={selectedRecipes}
+            onSelectRecipe={(id) =>
+              setSelectedRecipes((prev) =>
+                prev.includes(id)
+                  ? prev.filter((rid) => rid !== id)
+                  : [...prev, id]
+              )
+            }
+            onToggleItem={handleToggleIngredient}
+            onGenerateNew={saveShoppingList}
+            isLoading={isLoading}
+          />
+        )} */}
+
+        <Button onClick={() => setSelectedRecipes([])} variant="outline">
+          Clear Selection
+        </Button>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+          {recipes.map((recipe) => (
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              isSelected={selectedRecipes.includes(recipe.id)}
+              onSelect={(id) =>
+                setSelectedRecipes((prev) =>
+                  prev.includes(id)
+                    ? prev.filter((rid) => rid !== id)
+                    : [...prev, id]
+                )
+              }
             />
-            <div className="bg-gray-900 text-white p-6 mt-4 font-mono text-sm">
-              <h3>Server Logs</h3>
-              <ul className="mt-2">
-                {logs.map((log, index) => (
-                  <li key={index}>{log}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
-        {previewMetadata && !isLoadingPreview && (
-          <div className="rounded-lg border p-4">
-            {previewMetadata.image && (
-              <div className="relative w-full h-40 mb-3">
-                <Image
-                  src={previewMetadata.image}
-                  alt={previewMetadata.title || "Recipe preview"}
-                  fill
-                  className="object-cover rounded-md"
-                />
-              </div>
-            )}
-            <h3 className="font-medium line-clamp-2">
-              {previewMetadata.title || "No title available"}
-            </h3>
-            {previewMetadata.description && (
-              <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
-                {previewMetadata.description}
-              </p>
-            )}
-          </div>
-        )}
-        <div className="mt-8">
-          {shoppingListData && !isLoading && (
-            <div className="mt-4">
-              <Accordion type="single" collapsible>
-                <AccordionItem value="item-1">
-                  <AccordionTrigger>
-                    <div className="flex items-baseline justify-between">
-                      {" "}
-                      <h3 className="text-xl font-bold">Recipes</h3>
-                      <Button
-                        className="ml-10"
-                        variant="outline"
-                        onClick={generateShoppingList}
-                        disabled={isLoading}
-                      >
-                        {isLoading ? "Generating..." : "New List"}
-                      </Button>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <ul>
-                      {shoppingListData.selectedRecipes.map((recipe, index) => {
-                        // const urlMatch = recipe.match(/(https?:\/\/[^\s]+)/);
-                        // const url = urlMatch ? urlMatch[0] : "";
-                        // const recipeName = recipe.replace(url, "").trim();
-                        // return null;
-                        return (
-                          <div
-                            key={recipe.id}
-                            className={`p-2 transition-colors cursor-pointer ${
-                              selectedRecipes.includes(recipe.id)
-                                ? "bg-yellow-300"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              setSelectedRecipes((prev) =>
-                                prev.includes(recipe.id)
-                                  ? prev.filter((id) => id !== recipe.id)
-                                  : [...prev, recipe.id]
-                              )
-                            }
-                          >
-                            {recipe.image && (
-                              <div className="relative w-full h-40 mb-3">
-                                <Image
-                                  src={recipe.image}
-                                  alt={recipe.title || "Recipe preview"}
-                                  fill
-                                  className="object-cover"
-                                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                                />
-                              </div>
-                            )}
-
-                            <Link
-                              href={recipe.url}
-                              target="_blank"
-                              className="text-sm font-sans font-bold break-words"
-                            >
-                              {recipe.title}
-                            </Link>
-                            <div className="mt-4 text-sm flex flex-wrap gap-1 h-[70px] overflow-scroll">
-                              {recipe.ingredients.map((ingredient, index) => {
-                                return (
-                                  <p key={index}>
-                                    {ingredient.ingredient.name} {" / "}
-                                  </p>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </ul>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-              <Accordion type="single" collapsible>
-                <AccordionItem value="item-1">
-                  <AccordionTrigger>
-                    <div className="flex items-baseline justify-between">
-                      <h3 className="text-xl font-bold">List</h3>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <ul>
-                      {shoppingListData.items.map((item, index) => (
-                        <li key={index}>
-                          <div className="flex items-center space-x-2">
-                            <Checkbox
-                              checked={item.checked}
-                              onCheckedChange={() => toggleIngredient(index)}
-                            />
-                            <span
-                              className={
-                                item.checked ? "line-through text-gray-500" : ""
-                              }
-                            >
-                              {item.ingredient}
-                              {item.quantity !== 0 &&
-                                `: ${parseFloat(item.quantity.toFixed(2))} `}
-                              {item.unit &&
-                                item.unit !== "unit" &&
-                                `${item.unit}`}
-                            </span>
-                          </div>
-                          <p className="text-xs italic ml-6">{item.recipes}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
-          )}
-          <Button onClick={() => setSelectedRecipes([])} variant="outline">
-            Clear Selection
-          </Button>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-            {recipes.map((recipe) => {
-              return (
-                <div
-                  key={recipe.id}
-                  className={`p-2 transition-colors cursor-pointer ${
-                    selectedRecipes.includes(recipe.id) ? "bg-yellow-300" : ""
-                  }`}
-                  onClick={() =>
-                    setSelectedRecipes((prev) =>
-                      prev.includes(recipe.id)
-                        ? prev.filter((id) => id !== recipe.id)
-                        : [...prev, recipe.id]
-                    )
-                  }
-                >
-                  {recipe.image && (
-                    <div className="relative w-full h-40 mb-3">
-                      <Image
-                        src={recipe.image}
-                        alt={recipe.title || "Recipe preview"}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                      />
-                    </div>
-                  )}
-
-                  <Link
-                    href={recipe.url}
-                    target="_blank"
-                    className="text-sm font-sans font-bold break-words"
-                  >
-                    {recipe.title}
-                  </Link>
-                  <div className="mt-4 text-sm flex flex-wrap gap-1 h-[70px] overflow-scroll">
-                    {recipe.ingredients.map((ingredient, index) => {
-                      return (
-                        <p key={index}>
-                          {ingredient.ingredient.name} {" / "}
-                        </p>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          ))}
         </div>
 
         <div className="mt-4">
-          <form onSubmit={addRecipe} className="flex align-middle gap-1">
-            <Input
-              type="url"
-              value={newRecipeUrl}
-              onChange={(e) => setNewRecipeUrl(e.target.value)}
-              placeholder="Enter recipe URL"
-              required
-            />
-            <div>
-              <Button type="submit">Add Recipe</Button>
-            </div>
-          </form>
+          <AddRecipeForm onSubmit={handleAddRecipe} isLoading={isLoading} />
         </div>
       </div>
+
+      <SidePanel
+        savedRecipes={savedRecipes}
+        gatheredIngredients={gatheredIngredients}
+        shoppingList={shoppingList}
+        onToggleRecipeStar={handleToggleRecipeStar}
+        onRemoveRecipe={handleRemoveRecipe}
+        onToggleItem={handleToggleIngredient}
+      />
     </div>
   );
 }

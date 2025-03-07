@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { jwtVerify } from "jose";
 
 export async function POST(request: Request) {
@@ -15,32 +15,42 @@ export async function POST(request: Request) {
     );
     const userId = payload.userId as number;
 
-    const { recipeId, rating } = await request.json();
-
-    // Validate the rating value
-    if (!Object.values(Rating).includes(rating)) {
+    const { recipeId } = await request.json();
+    if (!recipeId) {
       return NextResponse.json(
-        { error: "Invalid rating value" },
+        { error: "Recipe ID is required" },
         { status: 400 }
       );
     }
 
-    const newRating = await prisma.rating.create({
-      data: {
-        recipeId,
-        userId,
-        rating,
+    // Check if recipe exists and belongs to user
+    const recipe = await prisma.recipe.findUnique({
+      where: { 
+        id: recipeId,
+        userId: userId
       },
+      select: { starred: true },
     });
 
-    return NextResponse.json({ rating: newRating });
+    if (!recipe) {
+      return NextResponse.json(
+        { error: "Recipe not found or unauthorized" },
+        { status: 404 }
+      );
+    }
+
+    // Toggle starred status
+    const updatedRecipe = await prisma.recipe.update({
+      where: { id: recipeId },
+      data: { starred: !recipe.starred },
+    });
+
+    return NextResponse.json(updatedRecipe);
   } catch (error) {
-    console.error("Error creating rating:", error);
+    console.error("Error updating recipe star status:", error);
     return NextResponse.json(
-      { error: "Failed to create rating" },
+      { error: "Failed to update recipe star status" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
 }

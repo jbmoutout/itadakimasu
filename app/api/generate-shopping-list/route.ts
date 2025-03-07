@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "../../lib/prisma";
 import { jwtVerify } from "jose";
 import convert, { Unit } from "convert-units";
+import { Recipe } from "@prisma/client";
 
 const convertToBaseUnit = (
   quantity: number,
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
 
       // Create shopping list structure
       const shoppingListData: {
-        selectedRecipes: any[];
+        selectedRecipes: Recipe[];
         items: Array<{
           ingredient: string;
           quantity: number;
