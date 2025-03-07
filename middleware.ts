@@ -18,5 +18,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/add-recipe', '/api/generate-shopping-list', '/api/update-shopping-list', '/api/last-shopping-list'],
+  matcher: ['/api/add-recipe', '/api/generate-shopping-list', '/api/update-shopping-list', '/api/last-shopping-list', '/api/recipes'],
 };

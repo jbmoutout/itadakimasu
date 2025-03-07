@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bowl -->
+  <path d="M24 64 C24 64, 24 96, 64 96 C104 96, 104 64, 104 64" 
+        fill="none" 
+        stroke="#4A90E2" 
+        stroke-width="8" 
+        stroke-linecap="round"/>
+  
+  <!-- Chopsticks -->
+  <line x1="40" y1="40" x2="40" y2="80" 
+        stroke="#4A90E2" 
+        stroke-width="4" 
+        stroke-linecap="round"/>
+  <line x1="50" y1="40" x2="50" y2="80" 
+        stroke="#4A90E2" 
+        stroke-width="4" 
+        stroke-linecap="round"/>
+</svg> 

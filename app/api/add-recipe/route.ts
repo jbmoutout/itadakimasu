@@ -14,23 +14,27 @@ export async function POST(request: Request) {
     const userId = payload.userId as number;
     
 
-    const { url } = await request.json();
+    const { url, title } = await request.json();
 
-    // Check if the URL already exists in the database
+    // Check if the URL already exists for this user
     const existingRecipe = await prisma.recipe.findFirst({
       where: {
         url: url,
+        userId: userId,
       }
     });
 
     if (existingRecipe) {
-        console.error('Recipe with this URL already exists');
-        return NextResponse.json({ error: 'Recipe with this URL already exists' }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'You have already saved this recipe',
+        recipe: existingRecipe 
+      }, { status: 400 });
     }
 
     const newRecipe = await prisma.recipe.create({
       data: {
         url: url,
+        title: title,
         userId: userId,
       },
     });

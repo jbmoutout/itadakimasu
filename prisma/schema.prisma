@@ -9,10 +9,20 @@ generator client {
 }
 
 model Recipe {
-  id        Int      @id @default(autoincrement())
-  url       String
-  createdAt DateTime @default(now())
-  userId    Int?
+  id          Int                @id @default(autoincrement())
+  url         String
+  originUrl   String?
+  title       String?
+  description String?
+  image       String?
+  createdAt   DateTime           @default(now())
+  userId      Int
+  starred     Boolean            @default(false)
+  ingredients RecipeIngredient[]
+  user        User               @relation(fields: [userId], references: [id])
+  savedLists  SavedList[]
+
+  @@unique([url, userId])
 }
 
 model ShoppingList {
@@ -23,10 +33,66 @@ model ShoppingList {
   userId    Int?
 }
 
+model SavedList {
+  id          Int              @id @default(autoincrement())
+  name        String           @default("Shopping List")
+  createdAt   DateTime         @default(now())
+  userId      Int
+  user        User             @relation(fields: [userId], references: [id])
+  recipes     Recipe[]
+  ingredients SavedIngredient[]
+
+  @@index([userId])
+}
+
+model SavedIngredient {
+  id              Int         @id @default(autoincrement())
+  savedListId     Int
+  savedList       SavedList   @relation(fields: [savedListId], references: [id])
+  ingredientId    Int
+  ingredient      Ingredient  @relation(fields: [ingredientId], references: [id])
+  quantity        Float
+  unit            String
+  category        String      @default("groceries")
+  checked         Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([savedListId, ingredientId])
+  @@index([savedListId])
+}
+
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            Int            @id @default(autoincrement())
+  email         String         @unique
+  password      String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  recipes       Recipe[]
+  savedLists    SavedList[]
+}
+
+model Ingredient {
+  id          Int                 @id @default(autoincrement())
+  name        String              @unique
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  recipes     RecipeIngredient[]
+  savedItems  SavedIngredient[]
+  category    String?
+  defaultUnit String?
+}
+
+model RecipeIngredient {
+  id           Int        @id @default(autoincrement())
+  recipeId     Int
+  ingredientId Int
+  quantity     Float?
+  unit         String?
+  recipe       Recipe     @relation(fields: [recipeId], references: [id])
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([recipeId, ingredientId])
 }
