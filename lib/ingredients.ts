@@ -6,12 +6,23 @@ export const EXCLUDED_INGREDIENTS = new Set([
   "pepper",
   "table salt",
   "black pepper",
+  "white pepper",
   "tap water",
   "ice cubes",
   "oil",
   "vinegar",
   "sugar",
   "flour",
+  "soy sauce",
+  "sake",
+  "mirin",
+  "rice vinegar",
+  "sesame oil",
+  "kosher salt",
+  "neutral oil",
+  "light soy sauce",
+  "dark soy sauce",
+  
 ]);
 
 // Standard units for normalization

@@ -1,34 +1,57 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Recipe, ShoppingList } from "@/types";
+import { Recipe } from "@/types";
 import { Header } from "./components/layout/Header";
+import { BottomOverlay } from "./components/layout/BottomOverlay";
+import { SavedLists } from "./components/shopping/SavedLists";
 import { AuthScreen } from "./components/auth/AuthScreen";
 import { LoadingOverlay } from "./components/common/LoadingOverlay";
-import { ShoppingList as ShoppingListComponent } from "./components/shopping/ShoppingList";
 import { RecipeCard } from "./components/recipes/RecipeCard";
 import { AddRecipeForm } from "./components/recipes/AddRecipeForm";
 import { Button } from "@/components/ui/button";
-import { SidePanel } from "./components/layout/SidePanel";
+import * as fuzzball from "fuzzball";
+
+// Cache for search results
+const searchCache = new Map<string, boolean>();
+
+interface SavedList {
+  id: number;
+  name: string;
+  createdAt: string;
+  recipes: Recipe[];
+  ingredients: Array<{
+    id: number;
+    ingredient: {
+      id: number;
+      name: string;
+    };
+    quantity: number;
+    unit: string;
+    category: "pantry" | "groceries";
+    checked: boolean;
+  }>;
+}
 
 export default function Home() {
   const router = useRouter();
-  const [shoppingList, setShoppingList] = useState<ShoppingList | null>(null);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipes, setSelectedRecipes] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [savedRecipes, setSavedRecipes] = useState<Recipe[]>([]);
-  const [gatheredIngredients, setGatheredIngredients] = useState<
-    Array<{ ingredient: string; quantity: number; unit: string }>
-  >([]);
+  const [savedLists, setSavedLists] = useState<SavedList[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [isFetchingRecipes, setIsFetchingRecipes] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
 
   const fetchRecipes = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
+    setIsFetchingRecipes(true);
     try {
       const res = await fetch("/api/recipes", {
         headers: { Authorization: `Bearer ${token}` },
@@ -39,6 +62,25 @@ export default function Home() {
       setRecipes(data);
     } catch (error) {
       console.error("Error fetching recipes:", error);
+    } finally {
+      setIsFetchingRecipes(false);
+    }
+  }, []);
+
+  const fetchSavedLists = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/saved-lists", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch saved lists");
+
+      const data = await res.json();
+      setSavedLists(data);
+    } catch (error) {
+      console.error("Error fetching saved lists:", error);
     }
   }, []);
 
@@ -46,7 +88,6 @@ export default function Home() {
     const token = localStorage.getItem("token");
     if (token) {
       setIsLoggedIn(true);
-      fetchLastShoppingList();
       router.refresh();
     }
     setIsAuthChecking(false);
@@ -54,184 +95,38 @@ export default function Home() {
 
   useEffect(() => {
     if (isLoggedIn) {
-      fetchLastShoppingList();
       fetchRecipes();
+      fetchSavedLists();
     }
-  }, [isLoggedIn, fetchRecipes]);
+  }, [isLoggedIn, fetchRecipes, fetchSavedLists]);
 
-  const fetchLastShoppingList = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await fetch("/api/last-shopping-list", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch last shopping list");
-
-      const data = await res.json();
-      setShoppingList(data.shoppingList);
-      setSavedRecipes(data.shoppingList?.selectedRecipes || []);
-    } catch (error) {
-      console.error("Error fetching last shopping list:", error);
-      setSavedRecipes([]);
-    }
-  };
-
-  const saveShoppingList = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    setIsLoading(true);
-
-    try {
-      const selectedRecipesData = recipes.filter((recipe) =>
-        selectedRecipes.includes(recipe.id)
-      );
-
-      // Generate shopping list
-      const response = await fetch("/api/generate-shopping-list", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ recipeIds: selectedRecipes }),
-      });
-
-      if (!response.ok) throw new Error("Failed to generate shopping list");
-
-      const data = await response.json();
-
-      // Ensure recipes are arrays in the shopping list items
-      const shoppingListWithArrays = {
-        ...data.shoppingList,
-        selectedRecipes: selectedRecipesData,
-        items: data.shoppingList.items.map((item: any) => ({
-          ...item,
-          recipes: Array.isArray(item.recipes) ? item.recipes : [item.recipes],
-        })),
-      };
-
-      // Update both the shopping list and saved recipes
-      setShoppingList(shoppingListWithArrays);
-      setSavedRecipes(selectedRecipesData);
-      setGatheredIngredients([]); // Reset gathered ingredients when saving new list
-    } catch (error) {
-      console.error("Error saving shopping list:", error);
-    } finally {
-      setIsLoading(false);
-      setSelectedRecipes([]);
-    }
-  };
-
-  const handleToggleIngredient = async (index: number) => {
-    if (!shoppingList) return;
-
-    const ingredient = shoppingList.items[index];
-    setGatheredIngredients((prev) => [
-      ...prev,
-      {
-        ingredient: ingredient.ingredient,
-        quantity: ingredient.quantity,
-        unit: ingredient.unit,
-      },
-    ]);
-
-    const updatedList = {
-      ...shoppingList,
-      items: shoppingList.items.filter((_, i) => i !== index),
+  // Add escape key handler
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selectedRecipes.length > 0) {
+        handleClearSelection();
+      }
     };
-    setShoppingList(updatedList);
 
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        await fetch("/api/update-shopping-list", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(updatedList),
-        });
-      } catch (error) {
-        console.error("Error updating shopping list:", error);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedRecipes.length]);
+
+  // Debounced search query update
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms debounce
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
       }
-    }
-  };
-
-  const handleToggleRecipeStar = async (recipeId: number) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const response = await fetch(`/api/recipes/${recipeId}/star`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to toggle recipe star");
-
-      const updatedRecipe = await response.json();
-      setRecipes((prev) =>
-        prev.map((recipe) => (recipe.id === recipeId ? updatedRecipe : recipe))
-      );
-      setSavedRecipes((prev) =>
-        prev.map((recipe) => (recipe.id === recipeId ? updatedRecipe : recipe))
-      );
-    } catch (error) {
-      console.error("Error toggling recipe star:", error);
-    }
-  };
-
-  const handleRemoveRecipe = async (recipeId: number) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const response = await fetch(`/api/recipes/${recipeId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) throw new Error("Failed to remove recipe");
-
-      setRecipes((prev) => prev.filter((recipe) => recipe.id !== recipeId));
-      setSavedRecipes((prev) =>
-        prev.filter((recipe) => recipe.id !== recipeId)
-      );
-
-      // Update shopping list to remove ingredients from removed recipe
-      if (shoppingList) {
-        const updatedList = {
-          ...shoppingList,
-          items: shoppingList.items.filter(
-            (item) =>
-              !item.recipes.includes(
-                recipes.find((r) => r.id === recipeId)?.title || ""
-              )
-          ),
-        };
-        setShoppingList(updatedList);
-
-        await fetch("/api/update-shopping-list", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(updatedList),
-        });
-      }
-    } catch (error) {
-      console.error("Error removing recipe:", error);
-    }
-  };
+    };
+  }, [searchQuery]);
 
   const handleAddRecipe = async (url: string) => {
     const token = localStorage.getItem("token");
@@ -273,80 +168,459 @@ export default function Home() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     setIsLoggedIn(false);
-    setShoppingList(null);
   };
+
+  const handleLogin = () => {
+    setIsLoggedIn(true);
+  };
+
+  const handleSelectRecipe = (id: number) => {
+    setSelectedRecipes((prev) =>
+      prev.includes(id) ? prev.filter((rid) => rid !== id) : [...prev, id]
+    );
+  };
+
+  const handleSave = async () => {
+    const token = localStorage.getItem("token");
+    if (!token || selectedRecipes.length === 0) return;
+
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/saved-lists", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ recipeIds: selectedRecipes }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save list");
+
+      const data = await res.json();
+      setSavedLists((prev) => [data, ...prev]);
+      setSelectedRecipes([]);
+    } catch (error) {
+      console.error("Error saving list:", error);
+      alert("Failed to save list. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRecipes([]);
+  };
+
+  const handleToggleIngredient = async (
+    listId: number,
+    ingredientId: number
+  ) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const currentList = savedLists.find((list) => list.id === listId);
+      const currentIngredient = currentList?.ingredients.find(
+        (i) => i.id === ingredientId
+      );
+      if (!currentIngredient) return;
+
+      const res = await fetch("/api/saved-lists", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ingredientId,
+          checked: !currentIngredient.checked,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to update ingredient");
+
+      const updatedIngredient = await res.json();
+      setSavedLists((prev) =>
+        prev.map((list) =>
+          list.id === listId
+            ? {
+                ...list,
+                ingredients: list.ingredients.map((i) =>
+                  i.id === ingredientId ? updatedIngredient : i
+                ),
+              }
+            : list
+        )
+      );
+    } catch (error) {
+      console.error("Error updating ingredient:", error);
+      alert("Failed to update ingredient. Please try again.");
+    }
+  };
+
+  const handleToggleRecipeStar = async (recipeId: number) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(`/api/recipes/${recipeId}/star`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) throw new Error("Failed to update recipe star");
+
+      const updatedRecipe = await res.json();
+      setRecipes((prev) =>
+        prev.map((r) => (r.id === recipeId ? updatedRecipe : r))
+      );
+      setSavedLists((prev) =>
+        prev.map((list) => ({
+          ...list,
+          recipes: list.recipes.map((r) =>
+            r.id === recipeId ? updatedRecipe : r
+          ),
+        }))
+      );
+    } catch (error) {
+      console.error("Error updating recipe star:", error);
+      alert("Failed to update recipe star. Please try again.");
+    }
+  };
+
+  const handleRemoveRecipe = async (listId: number, recipeId: number) => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch(
+        `/api/saved-lists/${listId}/recipes/${recipeId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!res.ok) throw new Error("Failed to remove recipe");
+
+      await fetchSavedLists();
+    } catch (error) {
+      console.error("Error removing recipe:", error);
+      alert("Failed to remove recipe. Please try again.");
+    }
+  };
+
+  const handleToggleStar = async () => {
+    const token = localStorage.getItem("token");
+    if (!token || selectedRecipes.length === 0) return;
+
+    try {
+      // Toggle star status for all selected recipes
+      await Promise.all(
+        selectedRecipes.map((recipeId) =>
+          fetch(`/api/recipes/${recipeId}/star`, {
+            method: "PATCH",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+        )
+      );
+
+      // Update local state
+      setRecipes((prev) =>
+        prev.map((r) =>
+          selectedRecipes.includes(r.id) ? { ...r, starred: !r.starred } : r
+        )
+      );
+      setSavedLists((prev) =>
+        prev.map((list) => ({
+          ...list,
+          recipes: list.recipes.map((r) =>
+            selectedRecipes.includes(r.id) ? { ...r, starred: !r.starred } : r
+          ),
+        }))
+      );
+    } catch (error) {
+      console.error("Error updating recipe stars:", error);
+      alert("Failed to update recipe stars. Please try again.");
+    }
+  };
+
+  const handleRemoveDuplicates = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/recipes/remove-duplicates", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) throw new Error("Failed to remove duplicates");
+
+      const data = await res.json();
+      if (data.success) {
+        alert(`Successfully removed ${data.totalDuplicates} duplicate recipes`);
+        fetchRecipes(); // Refresh the recipes list
+      }
+    } catch (error) {
+      console.error("Error removing duplicates:", error);
+      alert("Failed to remove duplicate recipes. Please try again.");
+    }
+  };
+
+  const handleDelete = async () => {
+    const token = localStorage.getItem("token");
+    if (!token || selectedRecipes.length === 0) return;
+
+    try {
+      // Delete all selected recipes
+      await Promise.all(
+        selectedRecipes.map((recipeId) =>
+          fetch(`/api/recipes/${recipeId}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+        )
+      );
+
+      // Update local state
+      setRecipes((prev) => prev.filter((r) => !selectedRecipes.includes(r.id)));
+      setSavedLists((prev) =>
+        prev.map((list) => ({
+          ...list,
+          recipes: list.recipes.filter((r) => !selectedRecipes.includes(r.id)),
+        }))
+      );
+      setSelectedRecipes([]);
+    } catch (error) {
+      console.error("Error deleting recipes:", error);
+      alert("Failed to delete recipes. Please try again.");
+    }
+  };
+
+  const handleAddToList = async () => {
+    const token = localStorage.getItem("token");
+    if (!token || selectedRecipes.length === 0) return;
+
+    try {
+      // Get the most recent saved list
+      const mostRecentList = savedLists[0];
+      if (!mostRecentList) {
+        alert("Please create a list first before adding recipes.");
+        return;
+      }
+
+      // Add selected recipes to the list
+      const res = await fetch(`/api/saved-lists/${mostRecentList.id}/recipes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ recipeIds: selectedRecipes }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add recipes to list");
+      }
+
+      // Fetch the updated list with ingredients
+      const updatedListRes = await fetch(
+        `/api/saved-lists/${mostRecentList.id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!updatedListRes.ok) {
+        throw new Error("Failed to fetch updated list");
+      }
+
+      const updatedList = await updatedListRes.json();
+
+      // Update the saved lists state with the updated list
+      setSavedLists((prev) =>
+        prev.map((list) => (list.id === mostRecentList.id ? updatedList : list))
+      );
+
+      setSelectedRecipes([]); // Clear selection after adding
+    } catch (error) {
+      console.error("Error adding recipes to list:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to add recipes to list. Please try again."
+      );
+    }
+  };
+
+  // Check if all selected recipes are starred
+  const areAllSelectedStarred =
+    selectedRecipes.length > 0 &&
+    selectedRecipes.every((id) => recipes.find((r) => r.id === id)?.starred);
+
+  // Sort recipes by starred status and filter by search query
+  const filteredAndSortedRecipes = useMemo(() => {
+    const filtered = recipes.filter((recipe) => {
+      if (!debouncedSearchQuery) return true;
+      const searchLower = debouncedSearchQuery.toLowerCase();
+
+      // Check cache first
+      const cacheKey = `${recipe.id}-${searchLower}`;
+      if (searchCache.has(cacheKey)) {
+        return searchCache.get(cacheKey);
+      }
+
+      // Quick check for exact matches first
+      const exactTitleMatch = recipe.title?.toLowerCase().includes(searchLower);
+      const exactIngredientMatch = recipe.ingredients?.some((ing) =>
+        ing.ingredient.name.toLowerCase().includes(searchLower)
+      );
+
+      if (exactTitleMatch || exactIngredientMatch) {
+        searchCache.set(cacheKey, true);
+        return true;
+      }
+
+      // Only perform fuzzy search if no exact match is found
+      const titleMatch =
+        recipe.title &&
+        fuzzball.ratio(searchLower, recipe.title.toLowerCase()) > 80;
+
+      const ingredientsMatch = recipe.ingredients?.some((ing) => {
+        const ingredientName = ing.ingredient.name.toLowerCase();
+        return fuzzball.ratio(searchLower, ingredientName) > 80;
+      });
+
+      const result = titleMatch || ingredientsMatch;
+      searchCache.set(cacheKey, result);
+      return result;
+    });
+
+    // Create a stable random order for non-starred recipes
+    const nonStarredRecipes = filtered.filter((recipe) => !recipe.starred);
+    const starredRecipes = filtered.filter((recipe) => recipe.starred);
+
+    // Sort non-starred recipes by their ID to maintain a stable order
+    const sortedNonStarred = [...nonStarredRecipes].sort((a, b) => a.id - b.id);
+
+    // Combine starred and non-starred recipes
+    return [...starredRecipes, ...sortedNonStarred];
+  }, [recipes, debouncedSearchQuery]);
+
+  // Clear search cache when recipes change
+  useEffect(() => {
+    searchCache.clear();
+  }, [recipes]);
 
   if (isAuthChecking) {
     return <LoadingOverlay />;
   }
 
   if (!isLoggedIn) {
-    return <AuthScreen />;
+    return <AuthScreen onLogin={handleLogin} />;
   }
 
   return (
-    <div className="pt-4">
-      <Header
-        onSave={saveShoppingList}
-        onLogout={handleLogout}
-        isSaving={isLoading}
-        hasSelectedRecipes={selectedRecipes.length > 0}
-      />
-
-      <div className="p-10 pt-20">
-        {isLoading && <LoadingOverlay />}
-
-        {/* {shoppingList && !isLoading && (
-          <ShoppingListComponent
-            data={shoppingList}
-            selectedRecipes={selectedRecipes}
-            onSelectRecipe={(id) =>
-              setSelectedRecipes((prev) =>
-                prev.includes(id)
-                  ? prev.filter((rid) => rid !== id)
-                  : [...prev, id]
-              )
-            }
-            onToggleItem={handleToggleIngredient}
-            onGenerateNew={saveShoppingList}
-            isLoading={isLoading}
+    <main className="min-h-screen bg-gray-50">
+      <Header onLogout={handleLogout} />
+      <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)]">
+        {/* Mobile SavedLists - Only visible on mobile */}
+        <div className="lg:hidden w-full bg-white border-b h-[300px]">
+          <SavedLists
+            savedLists={savedLists}
+            onToggleIngredient={handleToggleIngredient}
+            onToggleRecipeStar={handleToggleRecipeStar}
+            onRemoveRecipe={handleRemoveRecipe}
           />
-        )} */}
-
-        <Button onClick={() => setSelectedRecipes([])} variant="outline">
-          Clear Selection
-        </Button>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-          {recipes.map((recipe) => (
-            <RecipeCard
-              key={recipe.id}
-              recipe={recipe}
-              isSelected={selectedRecipes.includes(recipe.id)}
-              onSelect={(id) =>
-                setSelectedRecipes((prev) =>
-                  prev.includes(id)
-                    ? prev.filter((rid) => rid !== id)
-                    : [...prev, id]
-                )
-              }
-            />
-          ))}
         </div>
 
-        <div className="mt-4">
-          <AddRecipeForm onSubmit={handleAddRecipe} isLoading={isLoading} />
+        {/* Main content area */}
+        <div className="flex-1 container px-4 lg:px-10 mx-auto pt-4 lg:pt-24 pb-20 overflow-y-auto">
+          <div className="mb-8 flex gap-4">
+            <input
+              type="text"
+              placeholder="Search recipes by title or ingredients..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 p-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 text-md"
+            />
+          </div>
+          {isFetchingRecipes ? (
+            <LoadingOverlay />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-8">
+              {filteredAndSortedRecipes.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  isSelected={selectedRecipes.includes(recipe.id)}
+                  onSelect={() => handleSelectRecipe(recipe.id)}
+                />
+              ))}
+            </div>
+          )}
+          <div className="mt-12 mb-8 px-4">
+            <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border">
+              <h2 className="text-lg font-semibold mb-4">
+                Recipe Management Tools
+              </h2>
+              <div className="flex flex-col gap-4">
+                <AddRecipeForm
+                  onSubmit={handleAddRecipe}
+                  isLoading={isLoading}
+                />
+                <div className="flex items-center gap-4 pt-4 border-t">
+                  <div className="flex-1">
+                    <p className="text-sm text-gray-600">
+                      Found duplicate recipes? Clean up your collection.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleRemoveDuplicates}
+                    className="whitespace-nowrap"
+                  >
+                    Remove Duplicates
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop SavedLists - Only visible on desktop */}
+        <div className="hidden lg:block w-96 pt-20 bg-white p-6">
+          <SavedLists
+            savedLists={savedLists}
+            onToggleIngredient={handleToggleIngredient}
+            onToggleRecipeStar={handleToggleRecipeStar}
+            onRemoveRecipe={handleRemoveRecipe}
+          />
         </div>
       </div>
-
-      <SidePanel
-        savedRecipes={savedRecipes}
-        gatheredIngredients={gatheredIngredients}
-        shoppingList={shoppingList}
-        onToggleRecipeStar={handleToggleRecipeStar}
-        onRemoveRecipe={handleRemoveRecipe}
-        onToggleItem={handleToggleIngredient}
+      <BottomOverlay
+        onSave={handleSave}
+        onClearSelection={handleClearSelection}
+        onToggleStar={handleToggleStar}
+        onDelete={handleDelete}
+        onAddToList={handleAddToList}
+        isSaving={isLoading}
+        hasSelectedRecipes={selectedRecipes.length > 0}
+        selectedCount={selectedRecipes.length}
+        isStarred={areAllSelectedStarred}
       />
-    </div>
+    </main>
   );
 }

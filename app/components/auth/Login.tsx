@@ -2,7 +2,11 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const Login = () => {
+interface LoginProps {
+  onLogin: () => void;
+}
+
+const Login = ({ onLogin }: LoginProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -55,7 +59,7 @@ const Login = () => {
           console.log("Chrome runtime is not available");
         }
 
-        window.location.href = "/";
+        onLogin();
       } else {
         alert(data.error);
       }

@@ -1,5 +1,5 @@
 // Configuration
-const API_URL = "http://localhost:3002/api"; // Change this to your production URL when deploying
+const API_URL = "https://itadakimasu.vercel.app/api"; // Production URL
 
 // DOM Elements
 const bookmarkList = document.getElementById("bookmarkList");
@@ -65,10 +65,41 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.log("Recipes fetched:", recipes.length);
         existingRecipes = new Set(recipes.map((recipe) => recipe.url));
       } else {
-        console.error("Failed to fetch recipes:", response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Failed to fetch recipes:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData.error || "Unknown error",
+        });
+
+        // Handle JWT expired error
+        if (errorData.error?.includes("JWTExpired")) {
+          // Clear token from both storage areas
+          await Promise.all([
+            chrome.storage.local.remove("token"),
+            chrome.storage.sync.remove("token"),
+          ]);
+          status.textContent =
+            "Your session has expired. Please log in to Itadakimasu again.";
+          importButton.disabled = true;
+          selectAllCheckbox.disabled = true;
+          return;
+        }
+
+        status.textContent = `Error fetching recipes: ${
+          errorData.error || response.statusText || "Unknown error"
+        }`;
+        importButton.disabled = true;
+        selectAllCheckbox.disabled = true;
+        return;
       }
     } catch (error) {
       console.error("Error fetching existing recipes:", error);
+      status.textContent =
+        "Error connecting to Itadakimasu. Please check your connection.";
+      importButton.disabled = true;
+      selectAllCheckbox.disabled = true;
+      return;
     }
 
     // Get bookmarks from Chrome
@@ -212,10 +243,12 @@ async function importSelectedBookmarks() {
     );
     let successCount = 0;
     let errorCount = 0;
+    let ingredientErrorCount = 0;
 
     for (const recipe of selectedRecipes) {
       try {
-        const response = await fetch(`${API_URL}/add-recipe`, {
+        // First, add the recipe
+        const addResponse = await fetch(`${API_URL}/add-recipe`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -227,18 +260,88 @@ async function importSelectedBookmarks() {
           }),
         });
 
-        if (response.ok) {
-          successCount++;
-        } else {
-          errorCount++;
+        if (!addResponse.ok) {
+          const data = await addResponse.json();
+          if (data.error === "You have already saved this recipe") {
+            successCount++;
+            continue;
+          }
+          throw new Error(data.error || "Failed to add recipe");
         }
+
+        const { recipe: newRecipe } = await addResponse.json();
+
+        // Then, trigger ingredient extraction and wait for it to complete
+        const extractResponse = await fetch(`${API_URL}/extract-ingredients`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token.token}`,
+          },
+          body: JSON.stringify({
+            recipeId: newRecipe.id,
+          }),
+        });
+
+        if (!extractResponse.ok) {
+          const errorText = await extractResponse.text();
+          console.error("Failed to extract ingredients:", errorText);
+          ingredientErrorCount++;
+        } else {
+          // Read the stream to ensure it completes
+          const reader = extractResponse.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            // Convert the chunk to text
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.trim()) {
+                try {
+                  const data = JSON.parse(line);
+                  if (data.log) {
+                    console.log("Extraction log:", data.log);
+                  }
+                  if (data.error) {
+                    console.error("Extraction error:", data.error);
+                    ingredientErrorCount++;
+                  }
+                } catch (e) {
+                  console.error("Error parsing stream data:", e);
+                }
+              }
+            }
+          }
+        }
+
+        // Finally, trigger metadata fetching
+        const metadataResponse = await fetch(
+          `${API_URL}/preview-metadata?url=${encodeURIComponent(
+            recipe.url
+          )}&recipeId=${newRecipe.id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token.token}`,
+            },
+          }
+        );
+
+        if (!metadataResponse.ok) {
+          console.error(
+            "Failed to fetch metadata:",
+            await metadataResponse.text()
+          );
+        }
+
+        successCount++;
       } catch (error) {
         console.error("Error importing recipe:", error);
         errorCount++;
       }
     }
 
-    status.textContent = `Import complete: ${successCount} successful, ${errorCount} failed`;
+    status.textContent = `Import complete: ${successCount} successful, ${errorCount} failed, ${ingredientErrorCount} ingredient extraction errors`;
     selectedBookmarks.clear();
     renderBookmarks();
   } catch (error) {

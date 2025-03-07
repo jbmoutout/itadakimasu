@@ -4,7 +4,11 @@ import Login from "./Login";
 import Signup from "./Signup";
 import { useState } from "react";
 
-export const AuthScreen = () => {
+interface AuthScreenProps {
+  onLogin: () => void;
+}
+
+export const AuthScreen = ({ onLogin }: AuthScreenProps) => {
   const [showLogin, setShowLogin] = useState(true);
 
   return (
@@ -18,18 +22,22 @@ export const AuthScreen = () => {
             height={0}
             style={{ width: "30px", height: "auto" }}
           />
-          <h1 className="text-3xl">Itadakimasu</h1>
+          <p className="text-lg font-bold font-sans">itadakimasu</p>
         </div>
       </div>
-      <div className="mt-4">
-        {showLogin ? <Login /> : <Signup />}
+      <div className="flex flex-col items-center justify-center min-h-[80vh]">
+        {showLogin ? (
+          <Login onLogin={onLogin} />
+        ) : (
+          <Signup onSignup={onLogin} />
+        )}
         <Button
-          variant="link"
-          className="mt-2"
+          variant="ghost"
           onClick={() => setShowLogin(!showLogin)}
+          className="mt-4"
         >
           {showLogin
-            ? "Need an account? Sign up"
+            ? "Don't have an account? Sign up"
             : "Already have an account? Log in"}
         </Button>
       </div>

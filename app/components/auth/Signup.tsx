@@ -2,7 +2,11 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const Signup = () => {
+interface SignupProps {
+  onSignup: () => void;
+}
+
+const Signup = ({ onSignup }: SignupProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -17,7 +21,7 @@ const Signup = () => {
       const data = await response.json();
       if (response.ok) {
         localStorage.setItem("token", data.token);
-        // Redirect or update state to show logged in status
+        onSignup();
       } else {
         alert(data.error);
       }

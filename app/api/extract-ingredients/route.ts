@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import {prisma} from '../../lib/prisma';
-
+import { shouldIncludeIngredient } from '../../../lib/ingredients';
 import anthropic from '../../lib/anthropic';
 import * as cheerio from 'cheerio';
 // import { jwtVerify } from 'jose';
 
-
+interface ExtractedIngredient {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+}
 
 export async function POST(request: Request) {
   const encoder = new TextEncoder();
@@ -85,7 +89,7 @@ export async function POST(request: Request) {
         ]
       });
 
-      let ingredients;
+      let ingredients: ExtractedIngredient[];
       try {
         // @ts-expect-error response format
         const responseText = extractionResponse.content[0].text.trim();
@@ -103,7 +107,10 @@ export async function POST(request: Request) {
         ingredients = [{ name: "empty", quantity: null, unit: null }];
       }
       
-      await sendLog(`Found ${ingredients.length} ingredients`);
+      // Filter out excluded ingredients
+      ingredients = ingredients.filter(ing => shouldIncludeIngredient(ing.name));
+      
+      await sendLog(`Found ${ingredients.length} ingredients after filtering excluded ones`);
       await sendLog("Storing ingredients in database...");
       for (const ing of ingredients) {
         try {

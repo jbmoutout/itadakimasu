@@ -19,8 +19,8 @@ model Recipe {
   userId      Int
   starred     Boolean            @default(false)
   ingredients RecipeIngredient[]
-  gatheredItems GatheredItem[]
   user        User               @relation(fields: [userId], references: [id])
+  savedLists  SavedList[]
 
   @@unique([url, userId])
 }
@@ -33,15 +33,43 @@ model ShoppingList {
   userId    Int?
 }
 
+model SavedList {
+  id          Int              @id @default(autoincrement())
+  name        String           @default("Shopping List")
+  createdAt   DateTime         @default(now())
+  userId      Int
+  user        User             @relation(fields: [userId], references: [id])
+  recipes     Recipe[]
+  ingredients SavedIngredient[]
+
+  @@index([userId])
+}
+
+model SavedIngredient {
+  id              Int         @id @default(autoincrement())
+  savedListId     Int
+  savedList       SavedList   @relation(fields: [savedListId], references: [id])
+  ingredientId    Int
+  ingredient      Ingredient  @relation(fields: [ingredientId], references: [id])
+  quantity        Float
+  unit            String
+  category        String      @default("groceries")
+  checked         Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([savedListId, ingredientId])
+  @@index([savedListId])
+}
+
 model User {
   id            Int            @id @default(autoincrement())
   email         String         @unique
   password      String
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  pantryItems   PantryItem[]
-  gatheredItems GatheredItem[]
   recipes       Recipe[]
+  savedLists    SavedList[]
 }
 
 model Ingredient {
@@ -50,8 +78,7 @@ model Ingredient {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   recipes     RecipeIngredient[]
-  pantryItems PantryItem[]
-  gatheredItems GatheredItem[]
+  savedItems  SavedIngredient[]
   category    String?
   defaultUnit String?
 }
@@ -68,36 +95,4 @@ model RecipeIngredient {
   updatedAt    DateTime   @updatedAt
 
   @@unique([recipeId, ingredientId])
-}
-
-model PantryItem {
-  id           Int        @id @default(autoincrement())
-  ingredientId Int
-  quantity     Float
-  unit         String
-  expiryDate   DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  userId       Int
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
-  user         User       @relation(fields: [userId], references: [id])
-
-  @@unique([ingredientId, userId])
-}
-
-model GatheredItem {
-  id           Int        @id @default(autoincrement())
-  ingredientId Int
-  quantity     Float
-  unit         String
-  gathered     Boolean    @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  userId       Int
-  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
-  user         User       @relation(fields: [userId], references: [id])
-  recipeId     Int?
-  recipe       Recipe?    @relation(fields: [recipeId], references: [id])
-
-  @@unique([ingredientId, userId, recipeId])
 }
