@@ -54,12 +54,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Fetch existing recipes for the user
     try {
-      console.log("Fetching recipes...");
+      console.log("Fetching recipes from:", `${API_URL}/recipes`);
       const response = await fetch(`${API_URL}/recipes`, {
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
+        mode: "cors",
       });
+
+      console.log("Response status:", response.status);
+      console.log(
+        "Response headers:",
+        Object.fromEntries(response.headers.entries())
+      );
+
       if (response.ok) {
         const recipes = await response.json();
         console.log("Recipes fetched:", recipes.length);
@@ -70,6 +79,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           status: response.status,
           statusText: response.statusText,
           error: errorData.error || "Unknown error",
+          headers: Object.fromEntries(response.headers.entries()),
         });
 
         // Handle JWT expired error
@@ -95,8 +105,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (error) {
       console.error("Error fetching existing recipes:", error);
-      status.textContent =
-        "Error connecting to Itadakimasu. Please check your connection.";
+      console.error("Error details:", {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      });
+      status.textContent = `Error connecting to Itadakimasu: ${error.message}`;
       importButton.disabled = true;
       selectAllCheckbox.disabled = true;
       return;

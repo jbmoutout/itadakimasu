@@ -9,10 +9,10 @@
     "unlimitedStorage"
   ],
   "host_permissions": [
-    "http://localhost:3002/*"
+    "https://itadakimasu.vercel.app/*"
   ],
   "externally_connectable": {
-    "matches": ["http://localhost:3002/*"]
+    "matches": ["https://itadakimasu.vercel.app/*"]
   },
   "background": {
     "service_worker": "background.js"

@@ -4,8 +4,16 @@ import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Itadakimasu - Recipe Manager",
-  description: "Manage your recipes and ingredients",
+  title: "Itadakimasu",
+  description: "miam miam",
+  icons: {
+    icon: [
+      { url: "/images/favicon.ico" },
+      { url: "/images/favicon.ico", sizes: "16x16" },
+      { url: "/images/favicon.ico", sizes: "32x32" },
+    ],
+    apple: [{ url: "/images/favicon.ico" }],
+  },
 };
 
 export default function RootLayout({
