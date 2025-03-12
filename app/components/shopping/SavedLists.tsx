@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { Recipe } from "@/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Star, Trash2 } from "lucide-react";
+import { Star, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface SavedIngredient {
   id: number;
@@ -40,20 +41,42 @@ export const SavedLists = ({
   onToggleRecipeStar,
   onRemoveRecipe,
 }: SavedListsProps) => {
+  const router = useRouter();
   const [activeList, setActiveList] = useState<SavedList | null>(
     savedLists[0] || null
   );
+  const [activeTab, setActiveTab] = useState("groceries");
   const [loadingIngredientId, setLoadingIngredientId] = useState<number | null>(
     null
   );
-  const [loadingRecipeId, setLoadingRecipeId] = useState<number | null>(null);
   const [removingRecipeId, setRemovingRecipeId] = useState<number | null>(null);
+  const [completedRecipes, setCompletedRecipes] = useState<number[]>([]);
+  const [recipeTimeouts, setRecipeTimeouts] = useState<{
+    [key: number]: NodeJS.Timeout;
+  }>({});
 
   useEffect(() => {
     if (savedLists.length > 0) {
       setActiveList(savedLists[0]);
     }
   }, [savedLists]);
+
+  // Check if all ingredients are checked
+  useEffect(() => {
+    if (activeList) {
+      const allChecked = activeList.ingredients.every((i) => i.checked);
+      if (allChecked) {
+        setActiveTab("recipes");
+      }
+    }
+  }, [activeList]);
+
+  // Check if there are no recipes and redirect
+  useEffect(() => {
+    if (activeList && activeList.recipes.length === 0) {
+      router.push("/recipes");
+    }
+  }, [activeList, router]);
 
   if (!activeList) return null;
 
@@ -114,192 +137,251 @@ export const SavedLists = ({
   };
 
   const handleToggleRecipeStar = async (recipeId: number) => {
-    setLoadingRecipeId(recipeId);
     try {
       await onToggleRecipeStar(recipeId);
     } finally {
-      setLoadingRecipeId(null);
+      // No need for loading state cleanup
     }
   };
 
   const handleRemoveRecipe = async (listId: number, recipeId: number) => {
-    setRemovingRecipeId(recipeId);
+    const recipe = activeList.recipes.find((r) => r.id === recipeId);
+
+    // If recipe is already starred, remove it immediately
+    if (recipe?.starred) {
+      await onRemoveRecipe(listId, recipeId);
+      return;
+    }
+
+    // Otherwise show the rating prompt
+    setCompletedRecipes((prev) => [...prev, recipeId]);
+
+    // Store the timeout reference
+    const timeout = setTimeout(async () => {
+      try {
+        await onRemoveRecipe(listId, recipeId);
+      } finally {
+        setRemovingRecipeId(null);
+        setCompletedRecipes((prev) => prev.filter((id) => id !== recipeId));
+        setRecipeTimeouts((prev) => {
+          const newTimeouts = { ...prev };
+          delete newTimeouts[recipeId];
+          return newTimeouts;
+        });
+      }
+    }, 5000);
+
+    setRecipeTimeouts((prev) => ({
+      ...prev,
+      [recipeId]: timeout,
+    }));
+  };
+
+  const handleRateAndRemove = async (listId: number, recipeId: number) => {
+    // Clear the timeout for this recipe
+    if (recipeTimeouts[recipeId]) {
+      clearTimeout(recipeTimeouts[recipeId]);
+      setRecipeTimeouts((prev) => {
+        const newTimeouts = { ...prev };
+        delete newTimeouts[recipeId];
+        return newTimeouts;
+      });
+    }
+
     try {
+      await handleToggleRecipeStar(recipeId);
       await onRemoveRecipe(listId, recipeId);
     } finally {
+      setCompletedRecipes((prev) => prev.filter((id) => id !== recipeId));
       setRemovingRecipeId(null);
     }
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b bg-white">
-        <h2 className="text-lg font-semibold">Shopping List</h2>
-      </div>
-
-      {/* Content */}
+    <div className="h-full flex flex-col bg-white">
       <div className="flex-1 flex flex-col min-h-0">
-        <Tabs defaultValue="groceries" className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-2 sticky top-0 bg-white z-10">
-            <TabsTrigger value="groceries">Groceries</TabsTrigger>
-            <TabsTrigger value="recipes">Recipes</TabsTrigger>
-          </TabsList>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          <div className="sticky top-0 z-10 bg-white border-b border-gray-100">
+            <TabsList className="flex w-full max-w-2xl mx-auto">
+              <TabsTrigger
+                value="groceries"
+                className="flex-1 data-[state=active]:bg-transparent relative px-6 py-4"
+              >
+                <div className="flex items-center justify-center gap-2.5">
+                  <span className="text-base font-medium text-gray-600 data-[state=active]:text-gray-900">
+                    Ingredients
+                  </span>
+                  {groceries.length > 0 && (
+                    <span className="px-2 py-0.5 bg-gray-50 rounded-full text-sm font-medium text-gray-600">
+                      {groceries.filter((i) => !i.checked).length}
+                    </span>
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-6 right-6 h-0.5 bg-black scale-x-0 transition-transform duration-200 data-[state=active]:scale-x-100" />
+              </TabsTrigger>
+              <TabsTrigger
+                value="recipes"
+                className="flex-1 data-[state=active]:bg-transparent relative px-6 py-4"
+              >
+                <div className="flex items-center justify-center gap-2.5">
+                  <span className="text-base font-medium text-gray-600 data-[state=active]:text-gray-900">
+                    Recipes
+                  </span>
+                  {activeList.recipes.length > 0 && (
+                    <span className="px-2 py-0.5 bg-gray-50 rounded-full text-sm font-medium text-gray-600">
+                      {activeList.recipes.length}
+                    </span>
+                  )}
+                </div>
+                <div className="absolute bottom-0 left-6 right-6 h-0.5 bg-black scale-x-0 transition-transform duration-200 data-[state=active]:scale-x-100" />
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <TabsContent value="groceries" className="h-full">
-              <div className="space-y-2 p-4">
-                {groceries.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`flex items-center space-x-2 p-2 border rounded cursor-pointer transition-colors ${
-                      loadingIngredientId === item.id ? "opacity-50" : ""
-                    }`}
-                    onClick={() =>
-                      handleToggleIngredient(activeList.id, item.id)
-                    }
-                  >
-                    <Checkbox
-                      id={`checkbox-${item.id}`}
-                      checked={item.checked}
-                      onCheckedChange={() =>
+            <TabsContent value="groceries" className="h-full m-0">
+              <div className="max-w-2xl mx-auto px-6">
+                <div className="py-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {groceries.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`group flex items-center gap-3 p-3 border border-gray-200 rounded-xl cursor-pointer transition-all hover:border-gray-300 hover:shadow-sm ${
+                        loadingIngredientId === item.id ? "opacity-50" : ""
+                      } ${item.checked ? "bg-gray-50" : "bg-white"}`}
+                      onClick={() =>
                         handleToggleIngredient(activeList.id, item.id)
                       }
-                      onClick={(e) => e.stopPropagation()}
-                      disabled={loadingIngredientId === item.id}
-                    />
-                    <label
-                      htmlFor={`checkbox-${item.id}`}
-                      className={`flex-1 cursor-pointer text-sm lg:text-base ${
-                        item.checked ? "line-through text-gray-500" : ""
-                      }`}
                     >
-                      {item.ingredient.name} -{" "}
-                      {item.quantity === -1
-                        ? item.unit
-                        : `${item.quantity} ${item.unit}`}
-                    </label>
-                  </div>
-                ))}
+                      <Checkbox
+                        id={`checkbox-${item.id}`}
+                        checked={item.checked}
+                        onCheckedChange={() =>
+                          handleToggleIngredient(activeList.id, item.id)
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        disabled={loadingIngredientId === item.id}
+                        className="h-5 w-5 border-2 rounded-md data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                      />
+                      <div className="flex-1">
+                        <label
+                          htmlFor={`checkbox-${item.id}`}
+                          className={`block cursor-pointer font-medium ${
+                            item.checked
+                              ? "text-gray-500 line-through"
+                              : "text-gray-900"
+                          }`}
+                        >
+                          {item.ingredient.name}
+                        </label>
+                        <span
+                          className={`text-sm ${
+                            item.checked ? "text-gray-400" : "text-gray-500"
+                          }`}
+                        >
+                          {item.quantity === -1
+                            ? item.unit
+                            : `${item.quantity} ${item.unit}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="recipes" className="h-full">
-              <div className="space-y-2 p-4">
-                {activeList.recipes.map((recipe) => (
-                  <div
-                    key={recipe.id}
-                    className={`flex items-center gap-2 lg:gap-4 p-2 border rounded ${
-                      removingRecipeId === recipe.id ? "opacity-50" : ""
-                    }`}
-                  >
-                    <Link
-                      href={recipe.url}
-                      target="_blank"
-                      className="flex-1 flex items-center gap-2 lg:gap-4 min-w-0"
+            <TabsContent value="recipes" className="h-full m-0">
+              <div className="max-w-2xl mx-auto">
+                <div className="divide-y divide-gray-100">
+                  {activeList.recipes.map((recipe) => (
+                    <div
+                      key={recipe.id}
+                      className={`group flex items-center gap-4 p-4 hover:bg-gray-50/50 transition-colors ${
+                        removingRecipeId === recipe.id &&
+                        !completedRecipes.includes(recipe.id)
+                          ? "opacity-50"
+                          : ""
+                      }`}
                     >
-                      <div className="relative w-12 h-12 lg:w-16 lg:h-16 flex-shrink-0">
-                        {recipe.image ? (
+                      {recipe.image && (
+                        <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden">
                           <Image
                             src={recipe.image}
                             alt={recipe.title || "Recipe preview"}
                             fill
-                            className="object-cover rounded"
+                            className="object-cover transition-transform group-hover:scale-105"
                           />
-                        ) : (
-                          <div className="w-full h-full bg-gray-200 rounded flex items-center justify-center">
-                            <span className="text-gray-400 text-xs lg:text-sm">
-                              No image
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <Link
+                          href={recipe.url}
+                          target="_blank"
+                          className="group/link block"
+                        >
+                          <h3 className="font-medium text-lg text-gray-900 line-clamp-1 group-hover/link:text-yellow-600 transition-colors">
+                            {recipe.title}
+                          </h3>
+                          <div className="mt-1 text-sm text-gray-500 line-clamp-4">
+                            {recipe.ingredients
+                              ?.map((ingredient) => ingredient.ingredient.name)
+                              .join(" · ")}
+                            {(recipe.ingredients?.length || 0) > 3 && (
+                              <span className="text-gray-400">
+                                {" "}
+                                + {(recipe.ingredients?.length || 0) - 3} more
+                              </span>
+                            )}
+                          </div>
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {(completedRecipes.includes(recipe.id) ||
+                          removingRecipeId === recipe.id) &&
+                        !recipe.starred ? (
+                          <div
+                            onClick={() =>
+                              handleRateAndRemove(activeList.id, recipe.id)
+                            }
+                            className="flex items-center gap-3 px-4 py-2.5 rounded-xl border border-yellow-200 bg-yellow-50 hover:bg-yellow-100 hover:border-yellow-300 animate-in slide-in-from-right duration-500 cursor-pointer transition-colors group/rate"
+                          >
+                            <Star className="h-5 w-5 text-yellow-600" />
+                            <span className="text-base font-medium text-yellow-700">
+                              Miam miam ?
                             </span>
                           </div>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-sm lg:text-base hover:text-yellow-600 transition-colors">
-                          {recipe.title}
-                        </h3>
-                        <p className="text-xs lg:text-sm text-gray-500 truncate">
-                          {recipe.ingredients?.length || 0} ingredients
-                        </p>
-                        <div className="mt-1 text-[10px] lg:text-xs text-gray-400">
-                          {recipe.ingredients
-                            ?.slice(0, 3)
-                            .map((ingredient, index) => (
-                              <span key={index}>
-                                {ingredient.ingredient.name}
-                                {ingredient.quantity &&
-                                  ingredient.unit &&
-                                  ` (${ingredient.quantity} ${ingredient.unit})`}
-                                {index <
-                                Math.min(
-                                  2,
-                                  (recipe.ingredients?.length || 0) - 1
-                                )
-                                  ? ", "
-                                  : ""}
-                              </span>
-                            ))}
-                          {(recipe.ingredients?.length || 0) > 3 && (
-                            <span>
-                              ... and {(recipe.ingredients?.length || 0) - 3}{" "}
-                              more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                    <div className="flex items-center gap-1 lg:gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 lg:h-10 lg:w-10"
-                        onClick={() => handleToggleRecipeStar(recipe.id)}
-                        disabled={loadingRecipeId === recipe.id}
-                      >
-                        {loadingRecipeId === recipe.id ? (
-                          <Star className="h-3 w-3 lg:h-4 lg:w-4 animate-pulse" />
-                        ) : recipe.starred ? (
-                          <Star className="h-3 w-3 lg:h-4 lg:w-4 fill-yellow-400 text-yellow-400" />
                         ) : (
-                          <Star className="h-3 w-3 lg:h-4 lg:w-4" />
+                          <Button
+                            variant="outline"
+                            size="default"
+                            className={`h-11 px-4 rounded-xl border-2 transition-colors ${
+                              recipe.starred
+                                ? "border-gray-200 bg-gray-50 text-gray-400"
+                                : "border-green-200 bg-green-50 hover:bg-green-100 hover:border-green-300 text-green-700"
+                            } gap-2`}
+                            onClick={() =>
+                              handleRemoveRecipe(activeList.id, recipe.id)
+                            }
+                          >
+                            <Check
+                              className={`h-5 w-5 ${
+                                recipe.starred ? "text-gray-400" : ""
+                              }`}
+                            />
+                            <span className="font-medium">Done</span>
+                          </Button>
                         )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 lg:h-10 lg:w-10"
-                        onClick={() =>
-                          handleRemoveRecipe(activeList.id, recipe.id)
-                        }
-                        disabled={removingRecipeId === recipe.id}
-                      >
-                        <Trash2 className="h-3 w-3 lg:h-4 lg:w-4 text-red-500" />
-                      </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </TabsContent>
           </div>
         </Tabs>
-        <div className="p-4 border-t">
-          <select
-            value={activeList.id}
-            onChange={(e) => {
-              const list = savedLists.find(
-                (l) => l.id === parseInt(e.target.value)
-              );
-              if (list) setActiveList(list);
-            }}
-            className="w-full border rounded p-2 text-sm lg:text-base"
-          >
-            {savedLists.map((list) => (
-              <option key={list.id} value={list.id}>
-                {new Date(list.createdAt).toLocaleDateString()}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
     </div>
   );

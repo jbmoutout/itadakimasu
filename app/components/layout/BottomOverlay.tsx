@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Star, Trash2, Plus } from "lucide-react";
+import { Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { DeleteConfirmationModal } from "../common/DeleteConfirmationModal";
 
@@ -8,7 +8,6 @@ interface BottomOverlayProps {
   onClearSelection: () => void;
   onToggleStar: () => void;
   onDelete: () => void;
-  onAddToList: () => void;
   isSaving: boolean;
   hasSelectedRecipes: boolean;
   selectedCount: number;
@@ -20,7 +19,6 @@ export const BottomOverlay = ({
   onClearSelection,
   onToggleStar,
   onDelete,
-  onAddToList,
   isSaving,
   hasSelectedRecipes,
   selectedCount,
@@ -41,7 +39,7 @@ export const BottomOverlay = ({
                   {selectedCount}
                 </span>
                 <span className="text-sm text-gray-600">
-                  recipe{selectedCount !== 1 ? "s" : ""} selected
+                  {selectedCount !== 1 ? "s" : ""} selected
                 </span>
               </div>
               <div className="h-4 w-px bg-gray-200" />
@@ -61,16 +59,6 @@ export const BottomOverlay = ({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onAddToList}
-                disabled={!hasSelectedRecipes}
-                className="hover:bg-blue-50 hover:text-blue-600"
-                title="Add to current list"
-              >
-                <Plus className="h-5 w-5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
                 onClick={() => setShowDeleteModal(true)}
                 disabled={!hasSelectedRecipes}
                 className="hover:bg-red-50 hover:text-red-600"
@@ -83,9 +71,9 @@ export const BottomOverlay = ({
                 onClick={onSave}
                 disabled={!hasSelectedRecipes || isSaving}
                 variant="outline"
-                className="hover:bg-green-50 hover:text-green-600"
+                className="hover:bg-blue-50 hover:text-blue-600"
               >
-                {isSaving ? "Saving..." : "Save"}
+                {isSaving ? "Adding..." : "Add to List"}
               </Button>
               <Button
                 onClick={onClearSelection}
