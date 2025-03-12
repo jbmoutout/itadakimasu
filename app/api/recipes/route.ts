@@ -10,8 +10,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-    const userId = payload.userId as number;
+    let userId: number;
+    try {
+      const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
+      userId = payload.userId as number;
+      if (!userId) {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
+    } catch (jwtError) {
+      console.error('JWT verification failed:', jwtError);
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
 
     const recipes = await prisma.recipe.findMany({
       where: {
@@ -20,7 +29,11 @@ export async function GET(request: Request) {
       include: {
         ingredients: {
           include: {
-            ingredient: true,
+            ingredient: {
+              include: {
+                seasons: true
+              }
+            }
           },
         },
       },
@@ -102,7 +115,11 @@ export async function POST(request: Request) {
       include: {
         ingredients: {
           include: {
-            ingredient: true,
+            ingredient: {
+              include: {
+                seasons: true
+              }
+            },
           },
         },
       },

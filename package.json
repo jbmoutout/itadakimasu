@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
-    "clean:ingredients": "ts-node --project scripts/tsconfig.json scripts/clean-excluded-ingredients.ts"
+    "clean:ingredients": "ts-node --project scripts/tsconfig.json scripts/clean-ingredients.ts",
+    "ingest:seasonal": "ts-node --project scripts/tsconfig.json scripts/ingest-seasonal-data.ts",
+    "scrape:seasonal": "ts-node --project scripts/tsconfig.json scripts/scrape-mangerbouger.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.29.0",
@@ -32,7 +34,7 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.452.0",
     "next": "14.2.15",
-    "openai": "^4.67.3",
+    "playwright": "^1.42.1",
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^2.5.4",

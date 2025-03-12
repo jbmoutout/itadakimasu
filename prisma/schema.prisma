@@ -81,6 +81,9 @@ model Ingredient {
   savedItems  SavedIngredient[]
   category    String?
   defaultUnit String?
+  englishName String?            @unique
+  frenchName  String?            @unique
+  seasons     IngredientSeason[]
 }
 
 model RecipeIngredient {
@@ -95,4 +98,15 @@ model RecipeIngredient {
   updatedAt    DateTime   @updatedAt
 
   @@unique([recipeId, ingredientId])
+}
+
+model IngredientSeason {
+  id           Int        @id @default(autoincrement())
+  ingredientId Int
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+  month       Int        // 1-12
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([ingredientId, month])
 }

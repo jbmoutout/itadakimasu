@@ -1,0 +1,56 @@
+{
+  "fruits": [
+    {
+      "frenchName": "Pomme",
+      "englishName": "apple",
+      "months": [1, 2, 3, 9, 10, 11, 12]
+    },
+    {
+      "frenchName": "Poire",
+      "englishName": "pear",
+      "months": [1, 2, 8, 9, 10, 11, 12]
+    },
+    {
+      "frenchName": "Fraise",
+      "englishName": "strawberry",
+      "months": [5, 6, 7, 8]
+    },
+    {
+      "frenchName": "Framboise",
+      "englishName": "raspberry",
+      "months": [6, 7, 8, 9]
+    }
+  ],
+  "vegetables": [
+    {
+      "frenchName": "Carotte",
+      "englishName": "carrot",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    },
+    {
+      "frenchName": "Poireau",
+      "englishName": "leek",
+      "months": [1, 2, 3, 9, 10, 11, 12]
+    },
+    {
+      "frenchName": "Tomate",
+      "englishName": "tomato",
+      "months": [6, 7, 8, 9]
+    },
+    {
+      "frenchName": "Courgette",
+      "englishName": "zucchini",
+      "months": [6, 7, 8, 9]
+    },
+    {
+      "frenchName": "Épinard",
+      "englishName": "spinach",
+      "months": [3, 4, 5, 9, 10, 11]
+    },
+    {
+      "frenchName": "Asperge",
+      "englishName": "asparagus",
+      "months": [4, 5, 6]
+    }
+  ]
+} 

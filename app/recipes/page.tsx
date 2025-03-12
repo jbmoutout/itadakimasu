@@ -29,7 +29,10 @@ export default function Home() {
 
   const fetchRecipes = useCallback(async () => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token) {
+      handleLogout();
+      return;
+    }
 
     setIsFetchingRecipes(true);
     try {
@@ -37,23 +40,20 @@ export default function Home() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (res.status === 401) {
-        const data = await res.json();
-        if (data.error === "Token has expired") {
+      if (!res.ok) {
+        if (res.status === 401) {
           handleLogout();
           return;
         }
+        throw new Error(await res.text());
       }
-
-      if (!res.ok) throw new Error("Failed to fetch recipes");
 
       const data = await res.json();
       setRecipes(data);
     } catch (error) {
       console.error("Error fetching recipes:", error);
-      if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        handleLogout();
-      }
+      // If there's any error with the token or fetch, log out the user
+      handleLogout();
     } finally {
       setIsFetchingRecipes(false);
     }
@@ -245,14 +245,31 @@ export default function Home() {
     if (!token || selectedRecipes.length === 0) return;
 
     try {
-      // Get the most recent saved list
+      // First get the most recent list
+      const listsRes = await fetch("/api/saved-lists", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!listsRes.ok) {
+        throw new Error("Failed to fetch saved lists");
+      }
+
+      const lists = await listsRes.json();
+      const mostRecentList = lists[0]; // Lists are ordered by createdAt desc
+
+      // Add recipes to the most recent list
       const res = await fetch("/api/saved-lists", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ recipeIds: selectedRecipes }),
+        body: JSON.stringify({
+          recipeIds: selectedRecipes,
+          listId: mostRecentList?.id,
+        }),
       });
 
       if (!res.ok) {

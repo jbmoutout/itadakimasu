@@ -13,6 +13,9 @@ interface SavedIngredient {
   ingredient: {
     id: number;
     name: string;
+    seasons?: Array<{
+      month: number;
+    }>;
   };
   quantity: number;
   unit: string;
@@ -33,13 +36,214 @@ interface SavedListsProps {
   onToggleIngredient: (listId: number, ingredientId: number) => Promise<void>;
   onToggleRecipeStar: (recipeId: number) => Promise<void>;
   onRemoveRecipe: (listId: number, recipeId: number) => Promise<void>;
+  onUpdateLists?: (lists: SavedList[]) => void;
 }
+
+interface SuggestedRecipesProps {
+  checkedIngredients: string[];
+  recipes: Recipe[];
+  savedRecipeIds: number[];
+  onAddRecipe: (recipeId: number) => Promise<void>;
+}
+
+interface ScoredRecipe extends Recipe {
+  matchScore: number;
+  matchedIngredients: string[];
+  missingIngredients: string[];
+  percentageMatch: number;
+  seasonalIngredients: string[];
+}
+
+const SuggestedRecipes = ({
+  checkedIngredients,
+  recipes,
+  savedRecipeIds,
+  onAddRecipe,
+}: SuggestedRecipesProps) => {
+  const [addingRecipeId, setAddingRecipeId] = useState<number | null>(null);
+
+  // Enhanced recipe scoring and filtering
+  const suggestedRecipes = recipes
+    .filter((recipe) => {
+      // Filter out recipes that are already in the list
+      if (savedRecipeIds.includes(recipe.id)) return false;
+      return true;
+    })
+    // Remove duplicates by ID
+    .filter(
+      (recipe, index, self) =>
+        index === self.findIndex((r) => r.id === recipe.id)
+    )
+    // Score and enhance recipes
+    .map((recipe): ScoredRecipe => {
+      const checkedIngredientsLower = checkedIngredients.map((i) =>
+        i.toLowerCase()
+      );
+
+      // Find matching ingredients
+      const matchedIngredients = recipe.ingredients
+        .filter((ing) =>
+          checkedIngredientsLower.includes(ing.ingredient.name.toLowerCase())
+        )
+        .map((ing) => ing.ingredient.name);
+
+      // Find missing ingredients
+      const missingIngredients = recipe.ingredients
+        .filter(
+          (ing) =>
+            !checkedIngredientsLower.includes(ing.ingredient.name.toLowerCase())
+        )
+        .map((ing) => ing.ingredient.name);
+
+      // Calculate percentage match
+      const percentageMatch =
+        (matchedIngredients.length / recipe.ingredients.length) * 100;
+
+      // Calculate match score based on multiple factors
+      const matchScore =
+        // Base score from percentage match (0-50 points)
+        percentageMatch / 2 +
+        // Bonus for having more matching ingredients (0-30 points)
+        Math.min(matchedIngredients.length, 6) * 5 +
+        // Penalty for too many missing ingredients (-20 to 0 points)
+        Math.max(0, 8 - missingIngredients.length) * 2.5 +
+        // Bonus for starred recipes (25 points)
+        (recipe.starred ? 25 : 0);
+
+      return {
+        ...recipe,
+        matchScore,
+        matchedIngredients,
+        missingIngredients,
+        percentageMatch,
+        seasonalIngredients: [], // Simplified: no seasonal data for now
+      };
+    })
+    // First get recipes with at least 1 matching ingredient
+    .filter((recipe) => recipe.matchedIngredients.length >= 1)
+    // Sort by match score
+    .sort((a, b) => b.matchScore - a.matchScore)
+    // Take top suggestions (at least 4, max 6)
+    .slice(0, Math.max(4, Math.min(6, recipes.length)));
+
+  if (suggestedRecipes.length === 0) return null;
+
+  const handleAddRecipe = async (recipeId: number) => {
+    setAddingRecipeId(recipeId);
+    try {
+      await onAddRecipe(recipeId);
+    } finally {
+      setAddingRecipeId(null);
+    }
+  };
+
+  return (
+    <div className="mt-8 border-t border-gray-100 pt-8">
+      <h3 className="text-lg font-semibold text-gray-900 mb-4 px-6">
+        Suggested recipes
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-6">
+        {suggestedRecipes.map((recipe) => (
+          <div
+            key={recipe.id}
+            className="flex gap-4 p-4 border border-yellow-200 rounded-xl bg-yellow-50"
+          >
+            {recipe.image && (
+              <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden">
+                <Image
+                  src={recipe.image}
+                  alt={recipe.title || "Recipe preview"}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <Link
+                href={recipe.url}
+                target="_blank"
+                className="group/link block"
+              >
+                <h4 className="font-medium text-base text-gray-900 line-clamp-1 group-hover/link:text-yellow-600 transition-colors">
+                  {recipe.title}
+                </h4>
+                <div className="mt-1 text-sm">
+                  <div className="text-green-600">
+                    {recipe.matchedIngredients.map((ingredient, index) => (
+                      <span key={ingredient}>
+                        {ingredient}
+                        {index < recipe.matchedIngredients.length - 1 && (
+                          <span className="mx-1.5">·</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                  {recipe.missingIngredients.length > 0 && (
+                    <div className="text-gray-400 mt-0.5">
+                      Need:{" "}
+                      {recipe.missingIngredients.map((ingredient, index) => (
+                        <span key={ingredient}>
+                          {ingredient}
+                          {index < recipe.missingIngredients.length - 1 && (
+                            <span className="mx-1.5">·</span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Link>
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1">
+                  <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all"
+                      style={{ width: `${recipe.percentageMatch}%` }}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-yellow-300 bg-yellow-100 hover:bg-yellow-200 text-yellow-800"
+                  onClick={() => handleAddRecipe(recipe.id)}
+                  disabled={addingRecipeId === recipe.id}
+                >
+                  {addingRecipeId === recipe.id ? "Adding..." : "Add to list"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Helper function to check if an ingredient is in season
+const isIngredientInSeason = (
+  seasons: Array<{ month: number }> | undefined
+): boolean => {
+  if (!seasons?.length) return false;
+
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const monthsToCheck = [
+    (currentMonth - 2 + 12) % 12 || 12,
+    (currentMonth - 1 + 12) % 12 || 12,
+    currentMonth,
+    (currentMonth + 1) % 12 || 12,
+    (currentMonth + 2) % 12 || 12,
+  ];
+
+  return seasons.some((s) => monthsToCheck.includes(s.month));
+};
 
 export const SavedLists = ({
   savedLists,
   onToggleIngredient,
   onToggleRecipeStar,
   onRemoveRecipe,
+  onUpdateLists,
 }: SavedListsProps) => {
   const router = useRouter();
   const [activeList, setActiveList] = useState<SavedList | null>(
@@ -81,7 +285,9 @@ export const SavedLists = ({
   if (!activeList) return null;
 
   // Merge ingredients with the same name and add quantities
-  const mergeIngredients = (ingredients: SavedIngredient[]) => {
+  const mergeIngredients = (
+    ingredients: SavedIngredient[]
+  ): SavedIngredient[] => {
     const mergedMap = new Map<string, SavedIngredient>();
 
     ingredients.forEach((item) => {
@@ -89,18 +295,14 @@ export const SavedLists = ({
       const existing = mergedMap.get(key);
 
       if (existing) {
-        // If ingredient exists, handle different quantities
         if (existing.unit === item.unit) {
-          // Same unit, add quantities
           existing.quantity += item.quantity;
         } else {
-          // Different units, store as a string with both quantities
-          existing.quantity = -1; // Special flag to indicate multiple quantities
+          existing.quantity = -1;
           existing.unit = `${existing.quantity} ${existing.unit} + ${item.quantity} ${item.unit}`;
         }
         existing.checked = existing.checked || item.checked;
       } else {
-        // If ingredient doesn't exist, add it to the map
         mergedMap.set(key, { ...item });
       }
     });
@@ -109,8 +311,10 @@ export const SavedLists = ({
   };
 
   // Sort ingredients by checked status (unchecked first) and then by name
-  const sortIngredients = (ingredients: SavedIngredient[]) => {
-    return [...ingredients].sort((a, b) => {
+  const sortIngredients = (
+    ingredients: SavedIngredient[]
+  ): SavedIngredient[] => {
+    return ingredients.sort((a, b) => {
       if (a.checked !== b.checked) {
         return a.checked ? 1 : -1;
       }
@@ -118,10 +322,11 @@ export const SavedLists = ({
     });
   };
 
-  const groceries = sortIngredients(
-    mergeIngredients(
-      activeList.ingredients.filter((i) => i.category === "groceries")
-    )
+  const groceries = sortIngredients(mergeIngredients(activeList.ingredients));
+
+  // Get list of all ingredients for suggestions
+  const checkedIngredients = activeList.ingredients.map(
+    (i) => i.ingredient.name
   );
 
   const handleToggleIngredient = async (
@@ -197,6 +402,42 @@ export const SavedLists = ({
     }
   };
 
+  const handleAddSuggestedRecipe = async (recipeId: number) => {
+    if (!activeList) return;
+
+    try {
+      const response = await fetch("/api/saved-lists", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          recipeIds: [recipeId],
+          listId: activeList.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to add recipe to list");
+      }
+
+      const updatedList = await response.json();
+      // Update the active list with the new data
+      setActiveList(updatedList);
+      // Update the saved lists array
+      const updatedLists = savedLists.map((list) =>
+        list.id === activeList.id ? updatedList : list
+      );
+      // Call the parent component's update function if it exists
+      if (onUpdateLists) {
+        onUpdateLists(updatedLists);
+      }
+    } catch (error) {
+      console.error("Error adding recipe to list:", error);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="flex-1 flex flex-col min-h-0">
@@ -267,25 +508,33 @@ export const SavedLists = ({
                         className="h-5 w-5 border-2 rounded-md data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                       />
                       <div className="flex-1">
-                        <label
-                          htmlFor={`checkbox-${item.id}`}
-                          className={`block cursor-pointer font-medium ${
-                            item.checked
-                              ? "text-gray-500 line-through"
-                              : "text-gray-900"
-                          }`}
-                        >
-                          {item.ingredient.name}
-                        </label>
-                        <span
-                          className={`text-sm ${
-                            item.checked ? "text-gray-400" : "text-gray-500"
-                          }`}
-                        >
-                          {item.quantity === -1
-                            ? item.unit
-                            : `${item.quantity} ${item.unit}`}
-                        </span>
+                        <div className="flex justify-between items-center">
+                          <label
+                            htmlFor={`ingredient-${item.id}`}
+                            className={`flex-grow cursor-pointer ${
+                              item.checked ? "line-through text-gray-400" : ""
+                            }`}
+                          >
+                            {item.ingredient.name}
+                          </label>
+                          <span
+                            className={`text-sm ${
+                              item.checked ? "text-gray-400" : "text-gray-600"
+                            }`}
+                          >
+                            {item.quantity === -1
+                              ? item.unit
+                              : `${item.quantity} ${item.unit}`}
+                            {item.ingredient.seasons &&
+                              item.ingredient.seasons.length > 0 && (
+                                <span className="ml-2">
+                                  {isIngredientInSeason(
+                                    item.ingredient.seasons
+                                  ) && "🌱"}
+                                </span>
+                              )}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -326,9 +575,24 @@ export const SavedLists = ({
                             {recipe.title}
                           </h3>
                           <div className="mt-1 text-sm text-gray-500 line-clamp-4">
-                            {recipe.ingredients
-                              ?.map((ingredient) => ingredient.ingredient.name)
-                              .join(" · ")}
+                            {recipe.ingredients?.map((ingredient, index) => (
+                              <span
+                                key={`${recipe.id}-${ingredient.ingredient.id}`}
+                                className={`inline-flex items-center ${
+                                  ingredient.ingredient.seasons?.length &&
+                                  isIngredientInSeason(
+                                    ingredient.ingredient.seasons
+                                  )
+                                    ? "after:content-['🌱'] after:ml-0.5"
+                                    : ""
+                                }`}
+                              >
+                                {ingredient.ingredient.name}
+                                {index < recipe.ingredients.length - 1 && (
+                                  <span className="mx-1.5">·</span>
+                                )}
+                              </span>
+                            ))}
                             {(recipe.ingredients?.length || 0) > 3 && (
                               <span className="text-gray-400">
                                 {" "}
@@ -378,6 +642,13 @@ export const SavedLists = ({
                     </div>
                   ))}
                 </div>
+
+                <SuggestedRecipes
+                  checkedIngredients={checkedIngredients}
+                  recipes={savedLists.flatMap((list) => list.recipes)}
+                  savedRecipeIds={activeList.recipes.map((r) => r.id)}
+                  onAddRecipe={handleAddSuggestedRecipe}
+                />
               </div>
             </TabsContent>
           </div>

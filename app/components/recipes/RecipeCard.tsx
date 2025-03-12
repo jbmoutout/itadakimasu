@@ -3,6 +3,35 @@ import Image from "next/image";
 import Link from "next/link";
 import { Star } from "lucide-react";
 
+// Helper function to check if an ingredient is in season
+const isIngredientInSeason = (
+  seasons: Array<{ month: number }> | undefined
+): boolean => {
+  if (!seasons?.length) {
+    console.log("No seasons data available");
+    return false;
+  }
+
+  const currentMonth = new Date().getMonth() + 1; // 1-12
+  const monthsToCheck = [
+    (currentMonth - 2 + 12) % 12 || 12,
+    (currentMonth - 1 + 12) % 12 || 12,
+    currentMonth,
+    (currentMonth + 1) % 12 || 12,
+    (currentMonth + 2) % 12 || 12,
+  ];
+
+  const hasMatch = seasons.some((s) => monthsToCheck.includes(s.month));
+  console.log("Checking seasons for ingredient:", {
+    seasons: seasons.map((s) => s.month),
+    currentMonth,
+    monthsToCheck,
+    hasMatch,
+  });
+
+  return hasMatch;
+};
+
 interface RecipeCardProps {
   recipe: Recipe;
   isSelected: boolean;
@@ -52,12 +81,26 @@ export const RecipeCard = ({
         </p>
         <div className="h-[70px] overflow-y-auto">
           <ul className="space-y-1">
-            {recipe.ingredients?.map((ingredient, index) => (
-              <li key={index} className="flex items-center">
-                <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2" />
-                <span className="truncate">{ingredient.ingredient.name}</span>
-              </li>
-            ))}
+            {recipe.ingredients?.map((ingredient, index) => {
+              console.log("Ingredient:", ingredient);
+              const isInSeason = isIngredientInSeason(
+                ingredient.ingredient.seasons
+              );
+              console.log("Ingredient seasonality:", {
+                name: ingredient.ingredient.name,
+                seasons: ingredient.ingredient.seasons?.map((s) => s.month),
+                isInSeason,
+              });
+              return (
+                <li key={index} className="flex items-center">
+                  <span className="w-2 h-2 bg-yellow-400 rounded-full mr-2" />
+                  <span className="truncate inline-flex items-center">
+                    {ingredient.ingredient.name}
+                    {isInSeason && <span className="ml-1">🌱</span>}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>

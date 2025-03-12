@@ -21,6 +21,10 @@ export interface RecipeIngredient {
 export interface Ingredient {
   id: number
   name: string
+  seasons?: Array<{
+    isInSeason: boolean
+    month: number
+  }>
 }
 
 export interface SavedIngredient {

@@ -1,0 +1,1004 @@
+{
+  "fruits": [],
+  "vegetables": [
+    {
+      "frenchName": "Ananas",
+      "englishName": "pineapple",
+      "months": [
+        1,
+        2,
+        3,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Avocat",
+      "englishName": "avocado",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Banane",
+      "englishName": "banana",
+      "months": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    {
+      "frenchName": "Betterave",
+      "englishName": "beetroot",
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Cardon",
+      "englishName": "cardoon",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Carotte",
+      "englishName": "carrot",
+      "months": [
+        1,
+        2,
+        3,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Céleri",
+      "englishName": "celery",
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Chou",
+      "englishName": "cabbage",
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Chou de Bruxelles",
+      "englishName": "brussels sprout",
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Chou-fleur",
+      "englishName": "cauliflower",
+      "months": [
+        1,
+        2,
+        3,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Citron",
+      "englishName": "lemon",
+      "months": [
+        1,
+        2
+      ]
+    },
+    {
+      "frenchName": "Clémentine",
+      "englishName": "clementine",
+      "months": [
+        1,
+        2,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Courge",
+      "englishName": "pumpkin",
+      "months": [
+        1,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Cresson",
+      "englishName": "watercress",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Crosne",
+      "englishName": "chinese artichoke",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Endive",
+      "englishName": "endive",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        10
+      ]
+    },
+    {
+      "frenchName": "Épinard",
+      "englishName": "spinach",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Fruit de la passion",
+      "englishName": "passion fruit",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Goyave",
+      "englishName": "guava",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Grenade",
+      "englishName": "pomegranate",
+      "months": [
+        1,
+        2,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Kaki",
+      "englishName": "persimmon",
+      "months": [
+        1,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Kiwi",
+      "englishName": "kiwi",
+      "months": [
+        1,
+        2,
+        3,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Litchi",
+      "englishName": "lychee",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Mâche",
+      "englishName": "corn salad",
+      "months": [
+        1,
+        2,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Mandarine",
+      "englishName": "mandarin",
+      "months": [
+        1,
+        2,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Mangue",
+      "englishName": "mango",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Navet",
+      "englishName": "turnip",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Oignon",
+      "englishName": "onion",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Orange",
+      "englishName": "orange",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Orange sanguine",
+      "englishName": "blood orange",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Oseille",
+      "englishName": "sorrel",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Panais",
+      "englishName": "parsnip",
+      "months": [
+        1,
+        2,
+        3,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Papaye",
+      "englishName": "papaya",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Pissenlit",
+      "englishName": "dandelion",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Poire",
+      "englishName": "pear",
+      "months": [
+        1,
+        2,
+        3,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Poireau",
+      "englishName": "leek",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Pomelo",
+      "englishName": "pomelo",
+      "months": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "frenchName": "Pomme",
+      "englishName": "apple",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Potiron",
+      "englishName": "pumpkin",
+      "months": [
+        1,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Salsifis",
+      "englishName": "salsify",
+      "months": [
+        1,
+        2,
+        3,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Topinambour",
+      "englishName": "jerusalem artichoke",
+      "months": [
+        1,
+        2,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Pamplemousse",
+      "englishName": "grapefruit",
+      "months": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Radis",
+      "englishName": "radish",
+      "months": [
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Asperge",
+      "englishName": "asparagus",
+      "months": [
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Chou rouge",
+      "englishName": "red cabbage",
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Fenouil",
+      "englishName": "fennel",
+      "months": [
+        4,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "frenchName": "Fraise des bois",
+      "englishName": "wild strawberry",
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Mesclun",
+      "englishName": "mesclun",
+      "months": [
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Mûre",
+      "englishName": "blackberry",
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Pois gourmand",
+      "englishName": "mangetout",
+      "months": [
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Rhubarbe",
+      "englishName": "rhubarb",
+      "months": [
+        4,
+        5,
+        6
+      ]
+    },
+    {
+      "frenchName": "Salade",
+      "englishName": "lettuce",
+      "months": [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Artichaut",
+      "englishName": "artichoke",
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Concombre",
+      "englishName": "cucumber",
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Courgette",
+      "englishName": "zucchini",
+      "months": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Fraise",
+      "englishName": "strawberry",
+      "months": [
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "frenchName": "Petit pois",
+      "englishName": "green pea",
+      "months": [
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "frenchName": "Abricot",
+      "englishName": "apricot",
+      "months": [
+        6,
+        7,
+        9
+      ]
+    },
+    {
+      "frenchName": "Aubergine",
+      "englishName": "eggplant",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Blette",
+      "englishName": "swiss chard",
+      "months": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "frenchName": "Cassis",
+      "englishName": "blackcurrant",
+      "months": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "frenchName": "Cerise",
+      "englishName": "cherry",
+      "months": [
+        6,
+        7
+      ]
+    },
+    {
+      "frenchName": "Framboise",
+      "englishName": "raspberry",
+      "months": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "frenchName": "Groseille",
+      "englishName": "redcurrant",
+      "months": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "frenchName": "Haricot vert",
+      "englishName": "haricot vert",
+      "months": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Melon",
+      "englishName": "melon",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Pastèque",
+      "englishName": "watermelon",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Pêche",
+      "englishName": "peach",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Poivron",
+      "englishName": "bell pepper",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Tomate",
+      "englishName": "tomato",
+      "months": [
+        6,
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Ail",
+      "englishName": "ail",
+      "months": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Brugnon",
+      "englishName": "nectarine",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Cornichon",
+      "englishName": "gherkin",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Figue",
+      "englishName": "fig",
+      "months": [
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Maïs",
+      "englishName": "corn",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Myrtille",
+      "englishName": "blueberry",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Pâtisson",
+      "englishName": "pattypan squash",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Prune",
+      "englishName": "plum",
+      "months": [
+        7,
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Mirabelle",
+      "englishName": "mirabelle plum",
+      "months": [
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Nectarine",
+      "englishName": "nectarine",
+      "months": [
+        8,
+        9
+      ]
+    },
+    {
+      "frenchName": "Quetsche",
+      "englishName": "quetsche plum",
+      "months": [
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Brocoli",
+      "englishName": "broccoli",
+      "months": [
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "frenchName": "Raisin",
+      "englishName": "raisin",
+      "months": [
+        9,
+        10
+      ]
+    },
+    {
+      "frenchName": "Reine-claude",
+      "englishName": "greengage",
+      "months": [
+        9
+      ]
+    },
+    {
+      "frenchName": "Cèpe",
+      "englishName": "porcini mushroom",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Chou chinois",
+      "englishName": "chinese cabbage",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Coing",
+      "englishName": "quince",
+      "months": [
+        10
+      ]
+    },
+    {
+      "frenchName": "Coprin chevelu",
+      "englishName": "shaggy ink cap",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Pêche de vigne",
+      "englishName": "grape",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Pied de mouton",
+      "englishName": "morel",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Pleurote",
+      "englishName": "oyster mushroom",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Potimarron",
+      "englishName": "red kuri squash",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Rosé des prés",
+      "englishName": "meadow mushroom",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "frenchName": "Trompette de la mort",
+      "englishName": "trumpet of the dead",
+      "months": [
+        10,
+        11,
+        12
+      ]
+    }
+  ]
+}
