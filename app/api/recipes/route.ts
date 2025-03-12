@@ -29,11 +29,7 @@ export async function GET(request: Request) {
       include: {
         ingredients: {
           include: {
-            ingredient: {
-              include: {
-                seasons: true
-              }
-            }
+            ingredient: true,
           },
         },
       },
