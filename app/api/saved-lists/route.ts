@@ -112,8 +112,36 @@ export async function POST(request: Request) {
       );
     }
 
+    // Define a type alias for the saved list structure
+    type SavedListType = {
+      id: number;
+      recipes: Array<{
+        id: number;
+        ingredients: Array<{
+          ingredient: {
+            id: number;
+            name: string;
+            category?: string | null;
+          };
+          quantity?: number | null;
+          unit?: string | null;
+        }>;
+      }>;
+      ingredients: Array<{
+        id: number;
+        ingredient: {
+          id: number;
+          name: string;
+          category?: string | null;
+        };
+        quantity: number;
+        unit: string;
+        category: string;
+      }>;
+    };
+
     // Define the type for savedList
-    let savedList: { id: number; recipes: any[]; ingredients: any[] } | null = null;
+    let savedList: SavedListType | null = null;
     
     if (listId) {
       // Verify the list exists and belongs to the user
@@ -184,33 +212,37 @@ export async function POST(request: Request) {
         });
 
         // Update ingredients
-        await Promise.all(
-          Array.from(ingredientMap.values()).map((item) =>
-            prisma.savedIngredient.upsert({
-              where: {
-                savedListId_ingredientId: {
-                  savedListId: listId,
-                  ingredientId: item.ingredientId,
+        if (ingredientMap.size > 0) {
+          await Promise.all(
+            Array.from(ingredientMap.values()).map((item) =>
+              prisma.savedIngredient.upsert({
+                where: {
+                  savedListId_ingredientId: {
+                    savedListId: savedList!.id,
+                    ingredientId: item.ingredientId,
+                  },
                 },
-              },
-              create: {
-                savedListId: listId,
-                ingredientId: item.ingredientId,
-                quantity: normalizeQuantity(item.quantity),
-                unit: normalizeUnit(item.unit),
-                category: item.category,
-                checked: false,
-              },
-              update: {
-                quantity: normalizeQuantity(item.quantity),
-                unit: normalizeUnit(item.unit),
-                category: item.category,
-              },
-            })
-          )
-        );
+                create: {
+                  savedListId: savedList!.id,
+                  ingredientId: item.ingredientId,
+                  quantity: normalizeQuantity(item.quantity),
+                  unit: normalizeUnit(item.unit),
+                  category: item.category,
+                  checked: false,
+                },
+                update: {
+                  quantity: normalizeQuantity(item.quantity),
+                  unit: normalizeUnit(item.unit),
+                  category: item.category,
+                },
+              })
+            )
+          );
+        }
 
-        console.log("Updated existing list:", savedList.id);
+        if (savedList) {
+          console.log("Updated existing list:", savedList.id);
+        }
       } catch (error) {
         console.error("Error updating existing list:", error);
         throw new Error("Failed to update existing list");
@@ -244,41 +276,64 @@ export async function POST(request: Request) {
         });
 
         // Process ingredients for new list
-        const ingredientMap = new Map();
-        recipes.forEach((recipe) => {
-          recipe.ingredients.forEach((ri) => {
-            const key = `${ri.ingredient.id}-${ri.unit}`;
-            if (ingredientMap.has(key)) {
-              const existing = ingredientMap.get(key);
-              existing.quantity += ri.quantity || 0;
-            } else {
-              ingredientMap.set(key, {
-                ingredientId: ri.ingredient.id,
-                quantity: ri.quantity || 0,
-                unit: ri.unit || "unit",
-                category: ri.ingredient.category || "groceries",
-              });
-            }
+        const ingredientMap = new Map<string, {
+          ingredientId: number;
+          quantity: number;
+          unit: string;
+          category: string;
+        }>();
+        
+        if (savedList) {
+          savedList.recipes.forEach((recipe) => {
+            recipe.ingredients.forEach((ri) => {
+              const key = `${ri.ingredient.id}-${ri.unit}`;
+              if (ingredientMap.has(key)) {
+                const existing = ingredientMap.get(key)!;
+                existing.quantity += ri.quantity || 0;
+              } else {
+                ingredientMap.set(key, {
+                  ingredientId: ri.ingredient.id,
+                  quantity: ri.quantity || 0,
+                  unit: ri.unit || "unit",
+                  category: ri.ingredient.category || "groceries",
+                });
+              }
+            });
           });
-        });
+        }
 
         // Create ingredients
-        await Promise.all(
-          Array.from(ingredientMap.values()).map((item) =>
-            prisma.savedIngredient.create({
-              data: {
-                savedListId: savedList.id,
-                ingredientId: item.ingredientId,
-                quantity: normalizeQuantity(item.quantity),
-                unit: normalizeUnit(item.unit),
-                category: item.category,
-                checked: false,
-              },
-            })
-          )
-        );
+        if (ingredientMap.size > 0) {
+          await Promise.all(
+            Array.from(ingredientMap.values()).map((item) =>
+              prisma.savedIngredient.upsert({
+                where: {
+                  savedListId_ingredientId: {
+                    savedListId: savedList!.id,
+                    ingredientId: item.ingredientId,
+                  },
+                },
+                create: {
+                  savedListId: savedList!.id,
+                  ingredientId: item.ingredientId,
+                  quantity: normalizeQuantity(item.quantity),
+                  unit: normalizeUnit(item.unit),
+                  category: item.category,
+                  checked: false,
+                },
+                update: {
+                  quantity: normalizeQuantity(item.quantity),
+                  unit: normalizeUnit(item.unit),
+                  category: item.category,
+                },
+              })
+            )
+          );
+        }
 
-        console.log("Created new list:", savedList.id);
+        if (savedList) {
+          console.log("Created new list:", savedList.id);
+        }
       } catch (error) {
         console.error("Error creating new list:", error);
         throw new Error("Failed to create new list");
@@ -287,7 +342,7 @@ export async function POST(request: Request) {
 
     // Fetch the final state of the list
     const updatedList = await prisma.savedList.findUnique({
-      where: { id: savedList.id },
+      where: { id: savedList!.id },
       include: {
         recipes: {
           include: {
