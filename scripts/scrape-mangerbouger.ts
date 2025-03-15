@@ -67,7 +67,7 @@ ${namesToTranslate.join('\n')}`;
       });
 
       // Cast the response content to access the text
-      const englishNames = (response.content[0] as any).text
+      const englishNames = (response.content[0] as { text: string }).text
         .trim()
         .split('\n')
         .map((name: string) => name.trim())
@@ -175,7 +175,7 @@ async function saveSeasonalData(ingredientMonths: Map<string, number[]>, transla
   console.log('Saving seasonal data to database...');
   
   try {
-    for (const [frenchName, months] of ingredientMonths.entries()) {
+    for (const [frenchName, months] of Array.from(ingredientMonths)) {
       const englishName = translations.get(frenchName.toLowerCase());
       if (!englishName) {
         console.warn(`No translation found for ${frenchName}, skipping...`);
@@ -234,7 +234,7 @@ async function main() {
       vegetables: []
     };
 
-    for (const [frenchName, months] of ingredientMonths.entries()) {
+    for (const [frenchName, months] of Array.from(ingredientMonths)) {
       const englishName = translations.get(frenchName.toLowerCase());
       if (englishName) {
         seasonalData.vegetables.push({

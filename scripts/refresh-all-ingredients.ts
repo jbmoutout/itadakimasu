@@ -23,7 +23,8 @@ async function refreshAllIngredients() {
 
   console.log(`Found ${allRecipes.length} recipes total`);
 
-  for (const [index, recipe] of allRecipes.entries()) {
+  for (let index = 0; index < allRecipes.length; index++) {
+    const recipe = allRecipes[index];
     try {
       console.log(`\nProcessing recipe ${index + 1}/${allRecipes.length}: ${recipe.title || recipe.url}`);
       console.log(`Current ingredients: ${recipe.ingredients.length}`);
