@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Recipe } from "@/types";
 import { Header } from "../components/layout/Header";
@@ -10,10 +10,19 @@ import { LoadingOverlay } from "../components/common/LoadingOverlay";
 import { RecipeCard } from "../components/recipes/RecipeCard";
 import { AddRecipeForm } from "../components/recipes/AddRecipeForm";
 import { Button } from "@/components/ui/button";
-import * as fuzzball from "fuzzball";
+import { Trash2 } from "lucide-react";
+import { DeleteConfirmationModal } from "../components/common/DeleteConfirmationModal";
+import { useInView } from "react-intersection-observer";
 
 // Cache for search results
 const searchCache = new Map<string, boolean>();
+
+interface PaginationData {
+  total: number;
+  pages: number;
+  currentPage: number;
+  hasMore: boolean;
+}
 
 export default function Home() {
   const router = useRouter();
@@ -25,39 +34,126 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [isFetchingRecipes, setIsFetchingRecipes] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pagination, setPagination] = useState<PaginationData>({
+    total: 0,
+    pages: 0,
+    currentPage: 1,
+    hasMore: true,
+  });
 
-  const fetchRecipes = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      handleLogout();
-      return;
-    }
+  // Intersection observer for infinite scroll
+  const { ref: loadMoreRef, inView } = useInView({
+    threshold: 0.1,
+    rootMargin: "200px 0px", // Start loading 200px before reaching the bottom
+  });
 
-    setIsFetchingRecipes(true);
-    try {
-      const res = await fetch("/api/recipes", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          handleLogout();
-          return;
-        }
-        throw new Error(await res.text());
+  const fetchRecipes = useCallback(
+    async (page: number = 1, search: string = "") => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        handleLogout();
+        return;
       }
 
-      const data = await res.json();
-      setRecipes(data);
-    } catch (error) {
-      console.error("Error fetching recipes:", error);
-      // If there's any error with the token or fetch, log out the user
-      handleLogout();
-    } finally {
-      setIsFetchingRecipes(false);
+      setIsFetchingRecipes(true);
+      const startTime = Date.now();
+
+      try {
+        const queryParams = new URLSearchParams({
+          page: page.toString(),
+          ...(search && { search }),
+        });
+
+        const res = await fetch(`/api/recipes?${queryParams.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "force-cache",
+          next: {
+            revalidate: 60,
+          },
+        });
+
+        if (!res.ok) {
+          if (res.status === 401) {
+            handleLogout();
+            return;
+          }
+          throw new Error(await res.text());
+        }
+
+        const data = await res.json();
+
+        if (page === 1) {
+          setRecipes(data.recipes);
+        } else {
+          setRecipes((prev) => [...prev, ...data.recipes]);
+        }
+
+        setPagination(data.pagination);
+
+        // Update search cache
+        searchCache.clear();
+        data.recipes.forEach((recipe: Recipe) => {
+          const cacheKey = `${recipe.id}-${search.toLowerCase()}`;
+          searchCache.set(cacheKey, true);
+        });
+
+        // Ensure minimum loading time of 500ms for initial load
+        if (isInitialLoad) {
+          const elapsed = Date.now() - startTime;
+          if (elapsed < 500) {
+            await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+          }
+          setIsInitialLoad(false);
+        }
+      } catch (error) {
+        console.error("Error fetching recipes:", error);
+        handleLogout();
+      } finally {
+        setIsFetchingRecipes(false);
+      }
+    },
+    [isInitialLoad]
+  );
+
+  // Initial load
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchRecipes(1, debouncedSearchQuery);
     }
-  }, []);
+  }, [isLoggedIn, debouncedSearchQuery]);
+
+  // Infinite scroll
+  useEffect(() => {
+    if (inView && !isFetchingRecipes && pagination.hasMore) {
+      fetchRecipes(pagination.currentPage + 1, debouncedSearchQuery);
+    }
+  }, [
+    inView,
+    isFetchingRecipes,
+    pagination.hasMore,
+    pagination.currentPage,
+    debouncedSearchQuery,
+  ]);
+
+  // Debounced search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setPagination((prev) => ({ ...prev, currentPage: 1 })); // Reset pagination on new search
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -67,12 +163,6 @@ export default function Home() {
     }
     setIsAuthChecking(false);
   }, [router]);
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      fetchRecipes();
-    }
-  }, [isLoggedIn, fetchRecipes]);
 
   // Add escape key handler
   useEffect(() => {
@@ -85,22 +175,6 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedRecipes.length]);
-
-  // Debounced search query update
-  useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-    searchTimeoutRef.current = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 300); // 300ms debounce
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [searchQuery]);
 
   const handleAddRecipe = async (url: string) => {
     const token = localStorage.getItem("token");
@@ -294,60 +368,6 @@ export default function Home() {
     selectedRecipes.length > 0 &&
     selectedRecipes.every((id) => recipes.find((r) => r.id === id)?.starred);
 
-  // Sort recipes by starred status and filter by search query
-  const filteredAndSortedRecipes = useMemo(() => {
-    const filtered = recipes.filter((recipe) => {
-      if (!debouncedSearchQuery) return true;
-      const searchLower = debouncedSearchQuery.toLowerCase();
-
-      // Check cache first
-      const cacheKey = `${recipe.id}-${searchLower}`;
-      if (searchCache.has(cacheKey)) {
-        return searchCache.get(cacheKey);
-      }
-
-      // Quick check for exact matches first
-      const exactTitleMatch = recipe.title?.toLowerCase().includes(searchLower);
-      const exactIngredientMatch = recipe.ingredients?.some((ing) =>
-        ing.ingredient.name.toLowerCase().includes(searchLower)
-      );
-
-      if (exactTitleMatch || exactIngredientMatch) {
-        searchCache.set(cacheKey, true);
-        return true;
-      }
-
-      // Only perform fuzzy search if no exact match is found
-      const titleMatch =
-        recipe.title &&
-        fuzzball.ratio(searchLower, recipe.title.toLowerCase()) > 80;
-
-      const ingredientsMatch = recipe.ingredients?.some((ing) => {
-        const ingredientName = ing.ingredient.name.toLowerCase();
-        return fuzzball.ratio(searchLower, ingredientName) > 80;
-      });
-
-      const result = titleMatch || ingredientsMatch;
-      searchCache.set(cacheKey, result);
-      return result;
-    });
-
-    // Create a stable random order for non-starred recipes
-    const nonStarredRecipes = filtered.filter((recipe) => !recipe.starred);
-    const starredRecipes = filtered.filter((recipe) => recipe.starred);
-
-    // Sort non-starred recipes by their ID to maintain a stable order
-    const sortedNonStarred = [...nonStarredRecipes].sort((a, b) => a.id - b.id);
-
-    // Combine starred and non-starred recipes
-    return [...starredRecipes, ...sortedNonStarred];
-  }, [recipes, debouncedSearchQuery]);
-
-  // Clear search cache when recipes change
-  useEffect(() => {
-    searchCache.clear();
-  }, [recipes]);
-
   if (isAuthChecking) {
     return <LoadingOverlay />;
   }
@@ -362,57 +382,92 @@ export default function Home() {
       <div className="flex flex-col lg:flex-row">
         {/* Main content area */}
         <div className="flex-1 px-4 lg:px-10 pb-20 overflow-y-auto">
-          <div className="fixed top-[64px] left-0 right-0 z-30 bg-gray-50 px-4 lg:px-10 py-4">
+          <div className="fixed top-[48px] left-0 right-0 z-30 bg-gray-50 px-4 lg:px-10 py-4">
             <input
               type="text"
-              placeholder="Search recipes by title or ingredients..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full p-2 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 text-md bg-white"
+              className="w-full p-2  focus:outline-none focus:ring-2 focus:ring-yellow-300 text-md bg-white"
             />
           </div>
           <div className="mt-[72px]">
-            {isFetchingRecipes ? (
-              <LoadingOverlay />
-            ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-8">
-                {filteredAndSortedRecipes.map((recipe) => (
-                  <RecipeCard
-                    key={recipe.id}
-                    recipe={recipe}
-                    isSelected={selectedRecipes.includes(recipe.id)}
-                    onSelect={() => handleSelectRecipe(recipe.id)}
-                  />
-                ))}
+            {(isFetchingRecipes && recipes.length === 0) || isInitialLoad ? (
+              <div className="flex justify-center">
+                <LoadingOverlay />
               </div>
-            )}
-            <div className="mt-12 mb-8 px-4">
-              <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border">
-                <h2 className="text-lg font-semibold mb-4">
-                  Recipe Management Tools
-                </h2>
-                <div className="flex flex-col gap-4">
-                  <AddRecipeForm
-                    onSubmit={handleAddRecipe}
-                    isLoading={isLoading}
-                  />
-                  <div className="flex items-center gap-4 pt-4 border-t">
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-600">
-                        Found duplicate recipes? Clean up your collection.
-                      </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-8">
+                  {recipes.map((recipe) => (
+                    <RecipeCard
+                      key={recipe.id}
+                      recipe={recipe}
+                      isSelected={selectedRecipes.includes(recipe.id)}
+                      onSelect={() => handleSelectRecipe(recipe.id)}
+                    />
+                  ))}
+                </div>
+                {/* Infinite scroll trigger */}
+                {pagination.hasMore && (
+                  <div
+                    ref={loadMoreRef}
+                    className="h-10 flex items-center justify-center my-4"
+                  >
+                    {isFetchingRecipes && (
+                      <div className="scale-50">
+                        <LoadingOverlay />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="mt-12 mb-8 px-4">
+                  <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border">
+                    <h2 className="text-lg font-semibold mb-4">
+                      Recipe Management Tools
+                    </h2>
+                    <div className="flex flex-col gap-4">
+                      <AddRecipeForm
+                        onSubmit={handleAddRecipe}
+                        isLoading={isLoading}
+                      />
+                      <div className="flex items-center gap-4 pt-4 border-t">
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-600">
+                            Found duplicate recipes? Clean up your collection.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={handleRemoveDuplicates}
+                          className="whitespace-nowrap"
+                        >
+                          Remove Duplicates
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-4 pt-4 border-t">
+                        <div className="flex-1">
+                          <p className="text-sm text-gray-600">
+                            Want to delete selected recipes? Be careful, this
+                            action cannot be undone.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="default"
+                          className="h-11 px-4 rounded-xl border-2 border-red-200 bg-red-50 hover:bg-red-100 hover:border-red-300 text-red-700 gap-2"
+                          onClick={() => setShowDeleteModal(true)}
+                          disabled={selectedRecipes.length === 0}
+                        >
+                          <Trash2 className="h-5 w-5" />
+                          <span className="font-medium">Delete Selected</span>
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={handleRemoveDuplicates}
-                      className="whitespace-nowrap"
-                    >
-                      Remove Duplicates
-                    </Button>
                   </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -425,6 +480,15 @@ export default function Home() {
         hasSelectedRecipes={selectedRecipes.length > 0}
         selectedCount={selectedRecipes.length}
         isStarred={areAllSelectedStarred}
+      />
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={() => {
+          handleDelete();
+          setShowDeleteModal(false);
+        }}
+        count={selectedRecipes.length}
       />
     </main>
   );

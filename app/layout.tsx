@@ -26,7 +26,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <div className="min-h-screen bg-gray-50">
           {/* Main content area with top padding to account for fixed header */}
-          <div className="pt-16">{children}</div>
+          <div className="pt-[48px]">{children}</div>
         </div>
       </body>
     </html>

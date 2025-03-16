@@ -31,7 +31,11 @@ export const DeleteConfirmationModal = ({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm}>
+          <Button
+            variant="destructive"
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
             Delete
           </Button>
         </div>

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { normalizeQuantity, normalizeUnit, shouldIncludeIngredient } from '../../../lib/ingredients';
 import { jwtVerify } from 'jose';
+import { Prisma } from '@prisma/client';
+
+const PAGE_SIZE = 12; // Number of recipes per page
 
 export async function GET(request: Request) {
   try {
@@ -9,6 +12,10 @@ export async function GET(request: Request) {
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const search = searchParams.get('search') || '';
 
     let userId: number;
     try {
@@ -22,10 +29,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
+    // Build the where clause for search
+    const where: Prisma.RecipeWhereInput = {
+      userId,
+      ...(search ? {
+        OR: [
+          { title: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+          { description: { contains: search, mode: 'insensitive' as Prisma.QueryMode } },
+          {
+            ingredients: {
+              some: {
+                ingredient: {
+                  name: { contains: search, mode: 'insensitive' as Prisma.QueryMode }
+                }
+              }
+            }
+          }
+        ]
+      } : {})
+    };
+
+    // Get total count for pagination
+    const total = await prisma.recipe.count({ where });
+
+    // Get paginated recipes
     const recipes = await prisma.recipe.findMany({
-      where: {
-        userId: userId,
-      },
+      where,
       include: {
         ingredients: {
           include: {
@@ -33,9 +62,28 @@ export async function GET(request: Request) {
           },
         },
       },
+      orderBy: [
+        { starred: 'desc' },
+        { createdAt: 'desc' }
+      ],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
     });
 
-    return NextResponse.json(recipes);
+    // Add cache control headers
+    const response = NextResponse.json({
+      recipes,
+      pagination: {
+        total,
+        pages: Math.ceil(total / PAGE_SIZE),
+        currentPage: page,
+        hasMore: page * PAGE_SIZE < total
+      }
+    });
+    
+    response.headers.set('Cache-Control', 'public, s-maxage=30, stale-while-revalidate');
+    
+    return response;
   } catch (error) {
     console.error('Failed to fetch recipes:', error);
     return NextResponse.json({ error: 'Failed to fetch recipes' }, { status: 500 });

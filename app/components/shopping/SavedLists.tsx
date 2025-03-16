@@ -334,8 +334,75 @@ export const SavedLists = ({
     ingredientId: number
   ) => {
     setLoadingIngredientId(ingredientId);
+
+    // Optimistically update the UI
+    const updatedLists = savedLists.map((list) => {
+      if (list.id === listId) {
+        return {
+          ...list,
+          ingredients: list.ingredients.map((ingredient) => {
+            if (ingredient.id === ingredientId) {
+              return {
+                ...ingredient,
+                checked: !ingredient.checked,
+              };
+            }
+            return ingredient;
+          }),
+        };
+      }
+      return list;
+    });
+
+    // Update local state if onUpdateLists is available
+    if (onUpdateLists) {
+      onUpdateLists(updatedLists);
+    }
+
+    // Update active list
+    setActiveList((prevList) => {
+      if (!prevList || prevList.id !== listId) return prevList;
+      return {
+        ...prevList,
+        ingredients: prevList.ingredients.map((ingredient) => {
+          if (ingredient.id === ingredientId) {
+            return {
+              ...ingredient,
+              checked: !ingredient.checked,
+            };
+          }
+          return ingredient;
+        }),
+      };
+    });
+
     try {
+      // Make the actual API call
       await onToggleIngredient(listId, ingredientId);
+    } catch (error) {
+      console.error("Failed to toggle ingredient:", error);
+
+      // Revert the optimistic update on error
+      if (onUpdateLists) {
+        onUpdateLists(savedLists);
+      }
+
+      // Revert active list
+      setActiveList((prevList) => {
+        if (!prevList || prevList.id !== listId) return prevList;
+        return {
+          ...prevList,
+          ingredients: prevList.ingredients.map((ingredient) => {
+            if (ingredient.id === ingredientId) {
+              return {
+                ...ingredient,
+                checked: !ingredient.checked, // Revert back
+              };
+            }
+            return ingredient;
+          }),
+        };
+      });
     } finally {
       setLoadingIngredientId(null);
     }
@@ -446,7 +513,7 @@ export const SavedLists = ({
           onValueChange={setActiveTab}
           className="flex-1 flex flex-col min-h-0"
         >
-          <div className="sticky top-0 z-10 bg-white border-b border-gray-100">
+          <div className="sticky top-0 z-10 bg-white  border-gray-100">
             <TabsList className="flex w-full max-w-2xl mx-auto">
               <TabsTrigger
                 value="groceries"

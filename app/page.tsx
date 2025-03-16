@@ -22,6 +22,10 @@ export default function CookingPage() {
     try {
       const res = await fetch("/api/saved-lists", {
         headers: { Authorization: `Bearer ${token}` },
+        // cache: "force-cache",
+        // next: {
+        //   revalidate: 30,
+        // },
       });
 
       if (res.status === 401) {

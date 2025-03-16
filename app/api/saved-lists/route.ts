@@ -3,6 +3,9 @@ import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
+// Cache for database queries
+const CACHE_MAX_AGE = 30; // 30 seconds
+
 export async function GET(request: Request) {
   try {
     const token = request.headers.get("Authorization")?.split(" ")[1];
@@ -37,9 +40,16 @@ export async function GET(request: Request) {
       orderBy: {
         createdAt: "desc",
       },
+      // Add take limit to prevent loading too many lists
+      take: 10,
     });
 
-    return NextResponse.json(lists);
+    const response = NextResponse.json(lists);
+    
+    // Add cache control headers
+    response.headers.set('Cache-Control', `public, s-maxage=${CACHE_MAX_AGE}, stale-while-revalidate`);
+    
+    return response;
   } catch (error) {
     console.error("Failed to fetch saved lists:", error);
     return NextResponse.json(
