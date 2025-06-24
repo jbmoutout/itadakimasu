@@ -21,6 +21,7 @@ model Recipe {
   ingredients RecipeIngredient[]
   user        User               @relation(fields: [userId], references: [id])
   savedLists  SavedList[]
+  weeklyPlanHistory WeeklyPlanHistory[]
 
   @@unique([url, userId])
 }
@@ -70,6 +71,7 @@ model User {
   updatedAt     DateTime       @updatedAt
   recipes       Recipe[]
   savedLists    SavedList[]
+  weeklyPlanHistory WeeklyPlanHistory[]
 }
 
 model Ingredient {
@@ -109,4 +111,19 @@ model IngredientSeason {
   updatedAt   DateTime   @updatedAt
 
   @@unique([ingredientId, month])
+}
+
+model WeeklyPlanHistory {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  recipeId    Int
+  recipe      Recipe   @relation(fields: [recipeId], references: [id])
+  status      String   // "accepted", "rejected", "suggested"
+  planDate    DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId, planDate])
+  @@index([recipeId, status])
+  @@index([createdAt]) // For cleanup queries
 }

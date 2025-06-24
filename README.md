@@ -20,6 +20,28 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Features
+
+### Weekly Planner
+- **AI-Powered Meal Planning**: Uses Claude AI to select 5 optimal recipes for the week
+- **Smart Criteria**: Prioritizes healthy, seasonal (France-based), and ingredient-efficient recipes
+- **Interactive Selection**: Accept or reject individual recipes with alternative suggestions
+- **Seasonal Awareness**: Highlights ingredients currently in season
+- **Ingredient Efficiency**: Optimizes for shared ingredients across multiple recipes
+- **User Preferences**: Considers starred/favorite recipes in recommendations
+
+### Recipe Management
+- **Recipe Collection**: Save and organize recipes from the web
+- **Ingredient Extraction**: Automatic ingredient parsing with AI
+- **Seasonal Tracking**: Track which ingredients are in season
+- **Shopping Lists**: Generate organized shopping lists from selected recipes
+
+### Shopping & Cooking
+- **Saved Lists**: Create and manage multiple shopping lists
+- **Ingredient Tracking**: Check off ingredients as you shop
+- **Recipe Integration**: Link recipes to shopping lists
+- **Progress Tracking**: Monitor cooking progress
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

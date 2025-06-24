@@ -41,6 +41,16 @@ export const Header = ({ onLogout }: HeaderProps) => {
           >
             Recipes
           </Link>
+          <Link
+            href="/weekly-planner"
+            className={`px-6 h-12 flex items-center border-b-2 text-sm ${
+              pathname === "/weekly-planner"
+                ? "border-black font-semibold"
+                : "border-transparent text-gray-600 hover:text-black"
+            }`}
+          >
+            Weekly Planner
+          </Link>
         </nav>
       </div>
       <div className="flex items-center gap-2">
