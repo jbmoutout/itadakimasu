@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
 
 const prisma = new PrismaClient();
@@ -9,7 +9,7 @@ const anthropic = new Anthropic({
 async function validateIngredient(name: string): Promise<boolean> {
   try {
     const response = await anthropic.messages.create({
-      model: "claude-3-sonnet-20240229",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
       messages: [
         {
@@ -30,14 +30,14 @@ async function validateIngredient(name: string): Promise<boolean> {
           - "brussels sprouts" -> true (single specific ingredient)
           - "red cabbage" -> true (single specific ingredient)
           - "vegetables" -> false (general category)
-          - "carrot" -> true (single specific ingredient)`
-        }
-      ]
+          - "carrot" -> true (single specific ingredient)`,
+        },
+      ],
     });
 
     // @ts-expect-error response format
     const result = response.content[0].text.toLowerCase().trim();
-    return result === 'true';
+    return result === "true";
   } catch (error) {
     console.error(`Error validating ingredient ${name}:`, error);
     return true; // In case of error, keep the ingredient
@@ -49,12 +49,12 @@ async function cleanIngredients() {
   const unusedIngredients = await prisma.ingredient.findMany({
     where: {
       recipes: {
-        none: {}
-      }
+        none: {},
+      },
     },
     include: {
-      seasons: true
-    }
+      seasons: true,
+    },
   });
 
   console.log(`Found ${unusedIngredients.length} unused ingredients`);
@@ -62,17 +62,17 @@ async function cleanIngredients() {
   for (const ingredient of unusedIngredients) {
     try {
       const isValid = await validateIngredient(ingredient.name);
-      
+
       if (!isValid) {
         // Delete the ingredient and its seasonal data
         await prisma.ingredientSeason.deleteMany({
-          where: { ingredientId: ingredient.id }
+          where: { ingredientId: ingredient.id },
         });
-        
+
         await prisma.ingredient.delete({
-          where: { id: ingredient.id }
+          where: { id: ingredient.id },
         });
-        
+
         console.log(`Deleted invalid ingredient: ${ingredient.name}`);
       } else {
         console.log(`Kept valid ingredient: ${ingredient.name}`);
@@ -85,14 +85,14 @@ async function cleanIngredients() {
 
 async function main() {
   try {
-    console.log('Starting database cleanup...');
+    console.log("Starting database cleanup...");
     await cleanIngredients();
-    console.log('Done!');
+    console.log("Done!");
   } catch (error) {
-    console.error('Error:', error);
+    console.error("Error:", error);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-main(); 
+main();

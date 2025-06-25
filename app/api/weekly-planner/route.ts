@@ -173,7 +173,7 @@ Return ONLY a JSON array with exactly 5 recipe IDs in order of preference, like:
 
     // Call Anthropic API
     const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
       temperature: 0.3,
       messages: [
