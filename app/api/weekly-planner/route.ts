@@ -7,6 +7,12 @@ import {
   recordWeeklyPlanUsage,
   cleanupWeeklyPlanHistory,
 } from "@/lib/weekly-plan-history";
+import {
+  RecipeWithIngredients,
+  RecipeData,
+  RecipeWeight,
+  RecipeIngredientWithSeason,
+} from "@/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,7 +42,7 @@ export async function POST(request: NextRequest) {
           },
         },
       },
-    })) as any;
+    })) as unknown as RecipeWithIngredients[];
 
     if (recipes.length === 0) {
       return NextResponse.json({ error: "No recipes found" }, { status: 404 });
@@ -67,15 +73,15 @@ export async function POST(request: NextRequest) {
     const history = await getRecipeHistory(userId);
 
     // Get starred recipe IDs
-    const starredRecipeIds = new Set(
+    const starredRecipeIds = new Set<number>(
       recipes
-        .filter((recipe: any) => recipe.starred)
-        .map((recipe: any) => recipe.id)
+        .filter((recipe: RecipeWithIngredients) => recipe.starred)
+        .map((recipe: RecipeWithIngredients) => recipe.id)
     );
 
     // Calculate recipe weights based on history and preferences
     const recipeWeights = calculateRecipeWeights(
-      recipes.map((r: any) => r.id),
+      recipes.map((r: RecipeWithIngredients) => r.id),
       history,
       starredRecipeIds
     );
@@ -84,34 +90,41 @@ export async function POST(request: NextRequest) {
     const currentMonth = new Date().getMonth() + 1; // 1-12
 
     // Prepare recipe data for AI analysis
-    const recipeData = recipes.map((recipe: any) => {
-      const weight = recipeWeights.find((w) => w.recipeId === recipe.id);
-      const seasonalIngredients = recipe.ingredients.filter((ri: any) =>
-        ri.ingredient.seasons.some(
-          (season: any) => season.month === currentMonth
-        )
-      );
+    const recipeData: RecipeData[] = recipes.map(
+      (recipe: RecipeWithIngredients) => {
+        const weight = recipeWeights.find(
+          (w: RecipeWeight) => w.recipeId === recipe.id
+        );
+        const seasonalIngredients = recipe.ingredients.filter(
+          (ri: RecipeIngredientWithSeason) =>
+            ri.ingredient.seasons.some(
+              (season: { month: number }) => season.month === currentMonth
+            )
+        );
 
-      return {
-        id: recipe.id,
-        title: recipe.title || "Untitled Recipe",
-        description: recipe.description || "",
-        ingredients: recipe.ingredients.map((ri: any) => ({
-          name: ri.ingredient.name,
-          englishName: ri.ingredient.englishName,
-          isSeasonal: ri.ingredient.seasons.some(
-            (season: any) => season.month === currentMonth
+        return {
+          id: recipe.id,
+          title: recipe.title || "Untitled Recipe",
+          description: recipe.description || "",
+          ingredients: recipe.ingredients.map(
+            (ri: RecipeIngredientWithSeason) => ({
+              name: ri.ingredient.name,
+              englishName: ri.ingredient.englishName,
+              isSeasonal: ri.ingredient.seasons.some(
+                (season: { month: number }) => season.month === currentMonth
+              ),
+            })
           ),
-        })),
-        seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
-        weight: weight?.weight || 0,
-        weightReason: weight?.reason || "No history",
-        starred: recipe.starred,
-      };
-    });
+          seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
+          weight: weight?.weight || 0,
+          weightReason: weight?.reason || "No history",
+          starred: recipe.starred,
+        };
+      }
+    );
 
     // Sort recipes by weight (highest first) to prioritize better candidates
-    recipeData.sort((a, b) => b.weight - a.weight);
+    recipeData.sort((a: RecipeData, b: RecipeData) => b.weight - a.weight);
 
     // Create optimized prompt for Anthropic API cost efficiency
     const prompt = `You are a French cuisine expert helping to create a weekly meal plan. Select exactly 5 recipes from the provided list that balance health, seasonality (France-based), and ingredient efficiency.
@@ -124,19 +137,23 @@ Checked ingredients (already have): ${
 Recipe weights (higher = better choice):
 ${recipeData
   .map(
-    (recipe) => `- ${recipe.title}: ${recipe.weight} (${recipe.weightReason})`
+    (recipe: RecipeData) =>
+      `- ${recipe.title}: ${recipe.weight} (${recipe.weightReason})`
   )
   .join("\n")}
 
 Available recipes:
 ${recipeData
   .map(
-    (recipe) => `
+    (recipe: RecipeData) => `
 ID: ${recipe.id}
 Title: ${recipe.title}
 Description: ${recipe.description}
 Ingredients: ${recipe.ingredients
-      .map((i) => `${i.name}${i.isSeasonal ? " (seasonal)" : ""}`)
+      .map(
+        (i: { name: string; isSeasonal: boolean }) =>
+          `${i.name}${i.isSeasonal ? " (seasonal)" : ""}`
+      )
       .join(", ")}
 Seasonal Score: ${(recipe.seasonalScore * 100).toFixed(1)}%
 Weight: ${recipe.weight}
@@ -199,7 +216,7 @@ Return ONLY a JSON array with exactly 5 recipe IDs in order of preference, like:
           },
         },
       },
-    })) as any;
+    })) as unknown as RecipeWithIngredients[];
 
     // Record these recipes as "suggested" in the history
     for (const recipeId of selectedRecipeIds) {
@@ -207,39 +224,44 @@ Return ONLY a JSON array with exactly 5 recipe IDs in order of preference, like:
     }
 
     // Format the response
-    const formattedRecipes = selectedRecipes.map((recipe: any) => {
-      const seasonalIngredients = recipe.ingredients.filter((ri: any) =>
-        ri.ingredient.seasons.some(
-          (season: any) => season.month === currentMonth
-        )
-      );
+    const formattedRecipes = selectedRecipes.map(
+      (recipe: RecipeWithIngredients) => {
+        const seasonalIngredients = recipe.ingredients.filter(
+          (ri: RecipeIngredientWithSeason) =>
+            ri.ingredient.seasons.some(
+              (season: { month: number }) => season.month === currentMonth
+            )
+        );
 
-      return {
-        id: recipe.id,
-        title: recipe.title || "Untitled Recipe",
-        description: recipe.description || "",
-        image: recipe.image,
-        url: recipe.url,
-        ingredients: recipe.ingredients.map((ri: any) => ({
-          name: ri.ingredient.name,
-          englishName: ri.ingredient.englishName,
-          isSeasonal: ri.ingredient.seasons.some(
-            (season: any) => season.month === currentMonth
+        return {
+          id: recipe.id,
+          title: recipe.title || "Untitled Recipe",
+          description: recipe.description || "",
+          image: recipe.image,
+          url: recipe.url,
+          ingredients: recipe.ingredients.map(
+            (ri: RecipeIngredientWithSeason) => ({
+              name: ri.ingredient.name,
+              englishName: ri.ingredient.englishName,
+              isSeasonal: ri.ingredient.seasons.some(
+                (season: { month: number }) => season.month === currentMonth
+              ),
+            })
           ),
-        })),
-        seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
-        healthScore: calculateHealthScore(recipe.ingredients),
-        ingredientEfficiencyScore: calculateIngredientEfficiencyScore(
-          recipe.ingredients,
-          checkedIngredientNames
-        ),
-        reasoning: generateReasoning(
-          recipe,
-          seasonalIngredients,
-          checkedIngredientNames
-        ),
-      };
-    });
+          seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
+          healthScore: calculateHealthScore(seasonalIngredients),
+          ingredientEfficiencyScore: calculateIngredientEfficiencyScore(
+            seasonalIngredients,
+            checkedIngredientNames
+          ),
+          reasoning: generateReasoning(
+            recipe,
+            seasonalIngredients,
+            checkedIngredientNames
+          ),
+        };
+      }
+    );
 
     return NextResponse.json({
       recipes: formattedRecipes,
@@ -273,11 +295,13 @@ function getMonthName(month: number): string {
   return months[month - 1];
 }
 
-function calculateHealthScore(ingredients: any[]): number {
+function calculateHealthScore(
+  ingredients: RecipeIngredientWithSeason[]
+): number {
   // Simple health scoring based on ingredient variety and seasonal ingredients
   const seasonalCount = ingredients.filter((ri) =>
     ri.ingredient.seasons.some(
-      (season: any) => season.month === new Date().getMonth() + 1
+      (season: { month: number }) => season.month === new Date().getMonth() + 1
     )
   ).length;
 
@@ -288,7 +312,7 @@ function calculateHealthScore(ingredients: any[]): number {
 }
 
 function calculateIngredientEfficiencyScore(
-  ingredients: any[],
+  ingredients: RecipeIngredientWithSeason[],
   checkedIngredients: string[]
 ): number {
   if (checkedIngredients.length === 0) return 50; // Neutral score if no checked ingredients
@@ -302,8 +326,8 @@ function calculateIngredientEfficiencyScore(
 }
 
 function generateReasoning(
-  recipe: any,
-  seasonalIngredients: any[],
+  recipe: RecipeWithIngredients,
+  seasonalIngredients: RecipeIngredientWithSeason[],
   checkedIngredients: string[]
 ): string {
   const reasons = [];
@@ -312,8 +336,9 @@ function generateReasoning(
     reasons.push(`Uses ${seasonalIngredients.length} seasonal ingredients`);
   }
 
-  const matchingChecked = recipe.ingredients.filter((ri: any) =>
-    checkedIngredients.includes(ri.ingredient.name.toLowerCase())
+  const matchingChecked = recipe.ingredients.filter(
+    (ri: RecipeIngredientWithSeason) =>
+      checkedIngredients.includes(ri.ingredient.name.toLowerCase())
   );
 
   if (matchingChecked.length > 0) {

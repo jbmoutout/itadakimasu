@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { prisma } from "@/lib/prisma";
-import anthropic from "../../../lib/anthropic";
+import anthropic from "@/app/lib/anthropic";
+import { RecipeWithIngredients, RecipeIngredientWithSeason } from "@/types";
 
 interface AlternativeRecipe {
   recipeId: number;
@@ -9,6 +10,10 @@ interface AlternativeRecipe {
   seasonalScore: number;
   healthScore: number;
   ingredientEfficiencyScore: number;
+}
+
+interface WeeklyPlanRecipe {
+  id: number;
 }
 
 export async function POST(request: Request) {
@@ -27,27 +32,31 @@ export async function POST(request: Request) {
     const { rejectedRecipeId, currentWeeklyPlan } = await request.json();
 
     // Get all user's recipes with ingredients and seasonal data
-    const recipes = await prisma.recipe.findMany({
+    const recipes = (await prisma.recipe.findMany({
       where: { userId },
       include: {
         ingredients: {
           include: {
             ingredient: {
               include: {
-                seasons: true,
+                seasons: {
+                  select: {
+                    month: true,
+                  },
+                },
               },
             },
           },
         },
       },
-    });
+    })) as unknown as RecipeWithIngredients[];
 
     // Filter out the rejected recipe and recipes already in the weekly plan
     const availableRecipes = recipes.filter(
-      (recipe: any) =>
+      (recipe: RecipeWithIngredients) =>
         recipe.id !== rejectedRecipeId &&
         !currentWeeklyPlan.some(
-          (planRecipe: any) => planRecipe.id === recipe.id
+          (planRecipe: WeeklyPlanRecipe) => planRecipe.id === recipe.id
         )
     );
 
@@ -61,20 +70,26 @@ export async function POST(request: Request) {
     const currentMonth = new Date().getMonth() + 1; // 1-12
 
     // Prepare recipe data for Claude analysis
-    const recipeData = availableRecipes.map((recipe: any) => ({
-      id: recipe.id,
-      title: recipe.title || "Untitled Recipe",
-      description: recipe.description || "",
-      url: recipe.url,
-      image: recipe.image || "",
-      starred: recipe.starred,
-      ingredients: recipe.ingredients.map((ri: any) => ({
-        name: ri.ingredient.name,
-        quantity: ri.quantity || 0,
-        unit: ri.unit || "unit",
-        seasons: ri.ingredient.seasons.map((s: any) => s.month),
-      })),
-    }));
+    const recipeData = availableRecipes.map(
+      (recipe: RecipeWithIngredients) => ({
+        id: recipe.id,
+        title: recipe.title || "Untitled Recipe",
+        description: recipe.description || "",
+        url: recipe.url,
+        image: recipe.image || "",
+        starred: recipe.starred,
+        ingredients: recipe.ingredients.map(
+          (ri: RecipeIngredientWithSeason) => ({
+            name: ri.ingredient.name,
+            quantity: ri.quantity || 0,
+            unit: ri.unit || "unit",
+            seasons: ri.ingredient.seasons.map(
+              (s: { month: number }) => s.month
+            ),
+          })
+        ),
+      })
+    );
 
     // Create prompt for Claude to select 3 alternative recipes
     const selectionPrompt = `
@@ -166,7 +181,7 @@ Focus on providing diverse, healthy, and practical alternatives that complement 
     const alternativeRecipes = selectionResult.alternativeRecipes.map(
       (selection: AlternativeRecipe) => {
         const recipe = availableRecipes.find(
-          (r: any) => r.id === selection.recipeId
+          (r: RecipeWithIngredients) => r.id === selection.recipeId
         );
         if (!recipe) {
           throw new Error(`Recipe ${selection.recipeId} not found`);
@@ -179,15 +194,17 @@ Focus on providing diverse, healthy, and practical alternatives that complement 
           url: recipe.url,
           image: recipe.image || "",
           starred: recipe.starred,
-          ingredients: recipe.ingredients.map((ri: any) => ({
-            ingredient: {
-              id: ri.ingredient.id,
-              name: ri.ingredient.name,
-              seasons: ri.ingredient.seasons,
-            },
-            quantity: ri.quantity || 0,
-            unit: ri.unit || "unit",
-          })),
+          ingredients: recipe.ingredients.map(
+            (ri: RecipeIngredientWithSeason) => ({
+              ingredient: {
+                id: ri.ingredient.id,
+                name: ri.ingredient.name,
+                seasons: ri.ingredient.seasons,
+              },
+              quantity: ri.quantity || 0,
+              unit: ri.unit || "unit",
+            })
+          ),
           reasoning: selection.reasoning,
           seasonalScore: selection.seasonalScore,
           healthScore: selection.healthScore,
