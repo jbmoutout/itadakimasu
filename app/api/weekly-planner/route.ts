@@ -14,7 +14,23 @@ import {
   RecipeIngredientWithSeason,
 } from "@/types";
 
+// Add timeout configuration
+const FUNCTION_TIMEOUT = 25000; // 25 seconds (5 seconds buffer before Vercel's 30s limit)
+const API_TIMEOUT = 15000; // 15 seconds for external API calls
+
+// Timeout wrapper for async operations
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Operation timed out')), timeoutMs)
+    ),
+  ]);
+}
+
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     const { userId } = await request.json();
 
@@ -25,36 +41,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Clean up old history records (older than 1 month)
-    await cleanupWeeklyPlanHistory();
+    // Check if we're approaching timeout
+    const checkTimeout = () => {
+      if (Date.now() - startTime > FUNCTION_TIMEOUT) {
+        throw new Error('Function timeout approaching');
+      }
+    };
 
-    // Get user's recipes with ingredients and seasonal data
-    const recipes = (await prisma.recipe.findMany({
-      where: { userId },
-      include: {
-        ingredients: {
-          include: {
-            ingredient: {
-              include: {
-                seasons: true,
+    // Clean up old history records (with timeout) - make this non-blocking
+    cleanupWeeklyPlanHistory().catch(error => {
+      console.error("Cleanup failed:", error);
+    });
+
+    checkTimeout();
+
+    // Optimize database query - limit and select only necessary fields
+    const recipes = await withTimeout(
+      prisma.recipe.findMany({
+        where: { userId },
+        take: 100, // Limit to first 100 recipes to prevent excessive processing
+        include: {
+          ingredients: {
+            take: 20, // Limit ingredients per recipe
+            include: {
+              ingredient: {
+                select: {
+                  name: true,
+                  englishName: true,
+                  seasons: {
+                    select: {
+                      month: true
+                    }
+                  }
+                },
               },
             },
           },
         },
-      },
-    })) as unknown as RecipeWithIngredients[];
+        orderBy: [
+          { starred: 'desc' }, // Prioritize starred recipes
+          { createdAt: 'desc' }
+        ]
+      }),
+      10000 // 10 second timeout for DB query
+    ) as unknown as RecipeWithIngredients[];
 
     if (recipes.length === 0) {
       return NextResponse.json({ error: "No recipes found" }, { status: 404 });
     }
 
-    // Get checked ingredients for better ingredient efficiency scoring
-    const checkedIngredients = await prisma.shoppingList.findMany({
-      where: {
-        userId,
-        checked: true,
-      },
-    });
+    checkTimeout();
+
+    // Get checked ingredients with timeout
+    const checkedIngredients = await withTimeout(
+      prisma.shoppingList.findMany({
+        where: {
+          userId,
+          checked: true,
+        },
+        take: 50, // Limit to prevent excessive processing
+      }),
+      5000 // 5 second timeout
+    );
 
     // Extract ingredient names from the JSON data
     const checkedIngredientNames: string[] = [];
@@ -69,8 +117,13 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // Get recipe history for weighting
-    const history = await getRecipeHistory(userId);
+    checkTimeout();
+
+    // Get recipe history with timeout
+    const history = await withTimeout(
+      getRecipeHistory(userId),
+      5000 // 5 second timeout
+    );
 
     // Get starred recipe IDs
     const starredRecipeIds = new Set<number>(
@@ -86,10 +139,12 @@ export async function POST(request: NextRequest) {
       starredRecipeIds
     );
 
+    checkTimeout();
+
     // Get current month for seasonality
     const currentMonth = new Date().getMonth() + 1; // 1-12
 
-    // Prepare recipe data for AI analysis
+    // Prepare recipe data for AI analysis - limit to top 20 recipes by weight
     const recipeData: RecipeData[] = recipes.map(
       (recipe: RecipeWithIngredients) => {
         const weight = recipeWeights.find(
@@ -106,7 +161,7 @@ export async function POST(request: NextRequest) {
           id: recipe.id,
           title: recipe.title || "Untitled Recipe",
           description: recipe.description || "",
-          ingredients: recipe.ingredients.map(
+          ingredients: recipe.ingredients.slice(0, 10).map( // Limit ingredients to reduce prompt size
             (ri: RecipeIngredientWithSeason) => ({
               name: ri.ingredient.name,
               englishName: ri.ingredient.englishName,
@@ -115,7 +170,7 @@ export async function POST(request: NextRequest) {
               ),
             })
           ),
-          seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
+          seasonalScore: seasonalIngredients.length / Math.max(recipe.ingredients.length, 1),
           weight: weight?.weight || 0,
           weightReason: weight?.reason || "No history",
           starred: recipe.starred,
@@ -123,66 +178,45 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Sort recipes by weight (highest first) to prioritize better candidates
+    // Sort recipes by weight and take top 20 to reduce prompt size
     recipeData.sort((a: RecipeData, b: RecipeData) => b.weight - a.weight);
+    const topRecipes = recipeData.slice(0, 20);
+
+    checkTimeout();
 
     // Create optimized prompt for Anthropic API cost efficiency
-    const prompt = `You are a French cuisine expert helping to create a weekly meal plan. Select exactly 5 recipes from the provided list that balance health, seasonality (France-based), and ingredient efficiency.
+    const prompt = `You are a French cuisine expert. Select exactly 5 recipes from these ${topRecipes.length} options for a weekly meal plan.
 
 Current month: ${currentMonth} (${getMonthName(currentMonth)})
-Checked ingredients (already have): ${
-      checkedIngredientNames.join(", ") || "None"
-    }
+Checked ingredients: ${checkedIngredientNames.slice(0, 10).join(", ") || "None"}
 
-Recipe weights (higher = better choice):
-${recipeData
+Top recipes by weight:
+${topRecipes
   .map(
     (recipe: RecipeData) =>
-      `- ${recipe.title}: ${recipe.weight} (${recipe.weightReason})`
+      `ID: ${recipe.id} | ${recipe.title} | Weight: ${recipe.weight} | Seasonal: ${(recipe.seasonalScore * 100).toFixed(0)}% | Starred: ${recipe.starred ? 'Yes' : 'No'}`
   )
   .join("\n")}
 
-Available recipes:
-${recipeData
-  .map(
-    (recipe: RecipeData) => `
-ID: ${recipe.id}
-Title: ${recipe.title}
-Description: ${recipe.description}
-Ingredients: ${recipe.ingredients
-      .map(
-        (i: { name: string; isSeasonal: boolean }) =>
-          `${i.name}${i.isSeasonal ? " (seasonal)" : ""}`
-      )
-      .join(", ")}
-Seasonal Score: ${(recipe.seasonalScore * 100).toFixed(1)}%
-Weight: ${recipe.weight}
-`
-  )
-  .join("\n")}
+Return ONLY a JSON array with exactly 5 recipe IDs: [123, 456, 789, 101, 112]`;
 
-Instructions:
-1. Select exactly 5 recipes that provide variety and balance
-2. Prioritize recipes with higher weights (avoid recently used ones)
-3. Consider seasonal ingredients (marked as seasonal)
-4. Use checked ingredients efficiently to reduce waste
-5. Ensure nutritional balance and variety
-6. Prefer recipes with higher seasonal scores
+    checkTimeout();
 
-Return ONLY a JSON array with exactly 5 recipe IDs in order of preference, like: [123, 456, 789, 101, 112]`;
-
-    // Call Anthropic API
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      temperature: 0.3,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
+    // Call Anthropic API with timeout
+    const response = await withTimeout(
+      anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 200, // Reduced to speed up response
+        temperature: 0.1, // Lower temperature for more deterministic results
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+      }),
+      API_TIMEOUT
+    );
 
     const content = response.content[0];
     if (content.type !== "text") {
@@ -192,89 +226,129 @@ Return ONLY a JSON array with exactly 5 recipe IDs in order of preference, like:
     // Parse the response to extract recipe IDs
     const recipeIdsMatch = content.text.match(/\[(\d+(?:,\s*\d+)*)\]/);
     if (!recipeIdsMatch) {
-      throw new Error("Could not parse recipe IDs from AI response");
+      // Fallback: select top 5 recipes by weight if AI parsing fails
+      const fallbackIds = topRecipes.slice(0, 5).map(r => r.id);
+      console.warn("AI parsing failed, using fallback selection:", fallbackIds);
+      
+      const fallbackRecipes = recipes.filter(r => fallbackIds.includes(r.id));
+      
+      return NextResponse.json({
+        recipes: fallbackRecipes.map(formatRecipeResponse),
+        totalRecipes: recipes.length,
+        checkedIngredients: checkedIngredientNames,
+        fallbackUsed: true,
+      });
     }
 
     const selectedRecipeIds = recipeIdsMatch[1]
       .split(",")
-      .map((id) => parseInt(id.trim()));
+      .map((id) => parseInt(id.trim()))
+      .filter(id => !isNaN(id))
+      .slice(0, 5); // Ensure we only get 5 recipes max
+
+    checkTimeout();
 
     // Get the selected recipes with full details
-    const selectedRecipes = (await prisma.recipe.findMany({
-      where: {
-        id: { in: selectedRecipeIds },
-        userId,
-      },
-      include: {
-        ingredients: {
-          include: {
-            ingredient: {
-              include: {
-                seasons: true,
+    const selectedRecipes = await withTimeout(
+      prisma.recipe.findMany({
+        where: {
+          id: { in: selectedRecipeIds },
+          userId,
+        },
+        include: {
+          ingredients: {
+            include: {
+              ingredient: {
+                select: {
+                  name: true,
+                  englishName: true,
+                  seasons: {
+                    select: {
+                      month: true
+                    }
+                  }
+                },
               },
             },
           },
         },
-      },
-    })) as unknown as RecipeWithIngredients[];
+      }),
+      5000
+    ) as unknown as RecipeWithIngredients[];
 
-    // Record these recipes as "suggested" in the history
-    for (const recipeId of selectedRecipeIds) {
-      await recordWeeklyPlanUsage(userId, recipeId, "suggested");
-    }
+    // Record these recipes as "suggested" in the history (non-blocking)
+    Promise.all(
+      selectedRecipeIds.map(recipeId =>
+        recordWeeklyPlanUsage(userId, recipeId, "suggested").catch(error => {
+          console.error(`Failed to record usage for recipe ${recipeId}:`, error);
+        })
+      )
+    );
 
     // Format the response
-    const formattedRecipes = selectedRecipes.map(
-      (recipe: RecipeWithIngredients) => {
-        const seasonalIngredients = recipe.ingredients.filter(
-          (ri: RecipeIngredientWithSeason) =>
-            ri.ingredient.seasons.some(
-              (season: { month: number }) => season.month === currentMonth
-            )
-        );
-
-        return {
-          id: recipe.id,
-          title: recipe.title || "Untitled Recipe",
-          description: recipe.description || "",
-          image: recipe.image,
-          url: recipe.url,
-          ingredients: recipe.ingredients.map(
-            (ri: RecipeIngredientWithSeason) => ({
-              name: ri.ingredient.name,
-              englishName: ri.ingredient.englishName,
-              isSeasonal: ri.ingredient.seasons.some(
-                (season: { month: number }) => season.month === currentMonth
-              ),
-            })
-          ),
-          seasonalScore: seasonalIngredients.length / recipe.ingredients.length,
-          healthScore: calculateHealthScore(seasonalIngredients),
-          ingredientEfficiencyScore: calculateIngredientEfficiencyScore(
-            seasonalIngredients,
-            checkedIngredientNames
-          ),
-          reasoning: generateReasoning(
-            recipe,
-            seasonalIngredients,
-            checkedIngredientNames
-          ),
-        };
-      }
-    );
+    const formattedRecipes = selectedRecipes.map(formatRecipeResponse);
 
     return NextResponse.json({
       recipes: formattedRecipes,
       totalRecipes: recipes.length,
       checkedIngredients: checkedIngredientNames,
+      processingTime: Date.now() - startTime,
     });
   } catch (error) {
     console.error("Error generating weekly plan:", error);
+    
+    // Return a more specific error message
+    if (error instanceof Error && error.message.includes('timeout')) {
+      return NextResponse.json(
+        { 
+          error: "Request timed out. Please try again.", 
+          timeout: true,
+          processingTime: Date.now() - startTime 
+        },
+        { status: 504 }
+      );
+    }
+    
     return NextResponse.json(
       { error: "Failed to generate weekly plan" },
       { status: 500 }
     );
   }
+}
+
+// Helper function to format recipe response
+function formatRecipeResponse(recipe: RecipeWithIngredients) {
+  const currentMonth = new Date().getMonth() + 1;
+  const seasonalIngredients = recipe.ingredients.filter(
+    (ri: RecipeIngredientWithSeason) =>
+      ri.ingredient.seasons.some(
+        (season: { month: number }) => season.month === currentMonth
+      )
+  );
+
+  return {
+    id: recipe.id,
+    title: recipe.title || "Untitled Recipe",
+    description: recipe.description || "",
+    image: recipe.image,
+    url: recipe.url,
+    ingredients: recipe.ingredients.map(
+      (ri: RecipeIngredientWithSeason) => ({
+        name: ri.ingredient.name,
+        englishName: ri.ingredient.englishName,
+        isSeasonal: ri.ingredient.seasons.some(
+          (season: { month: number }) => season.month === currentMonth
+        ),
+      })
+    ),
+    seasonalScore: seasonalIngredients.length / Math.max(recipe.ingredients.length, 1),
+    healthScore: calculateHealthScore(seasonalIngredients),
+    ingredientEfficiencyScore: calculateIngredientEfficiencyScore(
+      seasonalIngredients,
+      []
+    ),
+    reasoning: generateReasoning(recipe, seasonalIngredients, []),
+  };
 }
 
 function getMonthName(month: number): string {

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { WEEKLY_PLANNER_WEIGHTS } from "./weekly-planner-weights";
-import type { WeeklyPlanHistory, Recipe } from "@prisma/client";
 
 export interface RecipeHistory {
   recipeId: number;
@@ -18,21 +17,30 @@ export interface RecipeWeight {
  * Clean up old weekly plan history records (older than 1 month)
  */
 export async function cleanupWeeklyPlanHistory() {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(
-    cutoffDate.getDate() - WEEKLY_PLANNER_WEIGHTS.historyRetentionDays
-  );
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(
+      cutoffDate.getDate() - WEEKLY_PLANNER_WEIGHTS.historyRetentionDays
+    );
 
-  const result = await prisma.weeklyPlanHistory.deleteMany({
-    where: {
-      createdAt: {
-        lt: cutoffDate,
-      },
-    },
-  });
-
-  console.log(`Cleaned up ${result.count} old weekly plan history records`);
-  return result.count;
+    // Use raw SQL as fallback if model doesn't exist
+    try {
+      const result = await prisma.$executeRaw`
+        DELETE FROM "WeeklyPlanHistory" 
+        WHERE "createdAt" < ${cutoffDate}
+      `;
+      
+      console.log(`Cleaned up ${result} old weekly plan history records`);
+      return Number(result);
+    } catch {
+      console.log("WeeklyPlanHistory table may not exist yet, skipping cleanup");
+      return 0;
+    }
+  } catch (error) {
+    console.error("Error cleaning up weekly plan history:", error);
+    // Don't throw error to avoid disrupting the main flow
+    return 0;
+  }
 }
 
 /**
@@ -41,28 +49,34 @@ export async function cleanupWeeklyPlanHistory() {
 export async function getRecipeHistory(
   userId: number
 ): Promise<RecipeHistory[]> {
-  const lookbackDate = new Date();
-  lookbackDate.setDate(
-    lookbackDate.getDate() - WEEKLY_PLANNER_WEIGHTS.lookbackWeeks * 7
-  );
+  try {
+    const lookbackDate = new Date();
+    lookbackDate.setDate(
+      lookbackDate.getDate() - WEEKLY_PLANNER_WEIGHTS.lookbackWeeks * 7
+    );
 
-  const history = await prisma.weeklyPlanHistory.findMany({
-    where: {
-      userId,
-      planDate: {
-        gte: lookbackDate,
-      },
-    },
-    orderBy: {
-      planDate: "desc",
-    },
-  });
+    // Use raw SQL as fallback if model doesn't exist
+    const history = await prisma.$queryRaw<Array<{
+      recipeId: number;
+      status: string;
+      planDate: Date;
+    }>>`
+      SELECT "recipeId", "status", "planDate"
+      FROM "WeeklyPlanHistory"
+      WHERE "userId" = ${userId}
+        AND "planDate" >= ${lookbackDate}
+      ORDER BY "planDate" DESC
+    `;
 
-  return history.map((record: WeeklyPlanHistory) => ({
-    recipeId: record.recipeId,
-    status: record.status as "accepted" | "rejected" | "suggested",
-    planDate: record.planDate,
-  }));
+    return history.map((record) => ({
+      recipeId: record.recipeId,
+      status: record.status as "accepted" | "rejected" | "suggested",
+      planDate: record.planDate,
+    }));
+  } catch {
+    console.log("WeeklyPlanHistory table may not exist yet, returning empty history");
+    return [];
+  }
 }
 
 /**
@@ -137,59 +151,63 @@ export async function recordWeeklyPlanUsage(
   recipeId: number,
   status: "accepted" | "rejected" | "suggested"
 ) {
-  return await prisma.weeklyPlanHistory.create({
-    data: {
-      userId,
-      recipeId,
-      status,
-      planDate: new Date(),
-    },
-  });
+  try {
+    // Use raw SQL as fallback if model doesn't exist
+    await prisma.$executeRaw`
+      INSERT INTO "WeeklyPlanHistory" ("userId", "recipeId", "status", "planDate", "createdAt")
+      VALUES (${userId}, ${recipeId}, ${status}, NOW(), NOW())
+    `;
+  } catch (error) {
+    console.error(`Failed to record weekly plan usage: ${error}`);
+    // Don't throw to avoid disrupting the main flow
+  }
 }
 
 /**
  * Reset weekly plan history for a user
  */
 export async function resetWeeklyPlanHistory(userId: number) {
-  return await prisma.weeklyPlanHistory.deleteMany({
-    where: {
-      userId,
-    },
-  });
+  try {
+    const result = await prisma.$executeRaw`
+      DELETE FROM "WeeklyPlanHistory" WHERE "userId" = ${userId}
+    `;
+    return Number(result);
+  } catch (error) {
+    console.error("Failed to reset weekly plan history:", error);
+    return 0;
+  }
 }
 
 /**
  * Get all recipes that have been used in weekly plans
  */
 export async function getUsedRecipes(userId: number) {
-  const history = await prisma.weeklyPlanHistory.findMany({
-    where: {
-      userId,
-    },
-    include: {
-      recipe: {
-        select: {
-          id: true,
-          title: true,
-          image: true,
-          url: true,
-        },
-      },
-    },
-    orderBy: {
-      planDate: "desc",
-    },
-  });
+  try {
+    const history = await prisma.$queryRaw<Array<{
+      id: number;
+      title: string;
+      image: string | null;
+      url: string;
+      status: string;
+      planDate: Date;
+    }>>`
+      SELECT r.id, r.title, r.image, r.url, wph.status, wph."planDate"
+      FROM "WeeklyPlanHistory" wph
+      JOIN "Recipe" r ON wph."recipeId" = r.id
+      WHERE wph."userId" = ${userId}
+      ORDER BY wph."planDate" DESC
+    `;
 
-  return history.map(
-    (
-      record: WeeklyPlanHistory & {
-        recipe: Pick<Recipe, "id" | "title" | "image" | "url">;
-      }
-    ) => ({
-      ...record.recipe,
+    return history.map((record) => ({
+      id: record.id,
+      title: record.title,
+      image: record.image,
+      url: record.url,
       status: record.status,
       planDate: record.planDate,
-    })
-  );
+    }));
+  } catch (error) {
+    console.error("Failed to get used recipes:", error);
+    return [];
+  }
 }

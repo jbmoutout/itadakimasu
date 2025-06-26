@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: "Weekly plan history reset successfully",
-      deletedCount: result.count,
+      deletedCount: result,
     });
   } catch (error) {
     console.error("Error resetting weekly plan history:", error);
