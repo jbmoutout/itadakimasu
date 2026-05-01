@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
+import { getUserId } from "@/lib/auth";
 import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
 
 export async function POST(
@@ -8,16 +8,7 @@ export async function POST(
   { params }: { params: { listId: string } }
 ) {
   try {
-    const token = request.headers.get("Authorization")?.split(" ")[1];
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const { recipeIds } = await request.json();
 

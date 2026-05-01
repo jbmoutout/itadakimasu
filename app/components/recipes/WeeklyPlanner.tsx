@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LoadingOverlay } from "../common/LoadingOverlay";
+import { apiFetch } from "../../lib/api-fetch";
 
 interface RecipeWithAnalysis {
   id: number;
@@ -58,35 +59,15 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("plan");
 
-  const getUserId = () => {
-    const token = localStorage.getItem("token");
-    if (!token) return null;
-
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      return payload.userId;
-    } catch {
-      return null;
-    }
-  };
-
   const generateWeeklyPlan = async () => {
-    const userId = getUserId();
-    if (!userId) {
-      setError("User not authenticated");
-      return;
-    }
-
     setIsGenerating(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/weekly-planner", {
+      const response = await apiFetch("/api/weekly-planner", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
       });
 
       if (!response.ok) {
@@ -109,14 +90,9 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
   };
 
   const fetchUsedRecipes = async () => {
-    const userId = getUserId();
-    if (!userId) return;
-
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `/api/weekly-planner/reset?userId=${userId}`
-      );
+      const response = await apiFetch("/api/weekly-planner/reset");
       if (!response.ok) throw new Error("Failed to fetch used recipes");
 
       const data = await response.json();
@@ -129,9 +105,6 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
   };
 
   const resetHistory = async () => {
-    const userId = getUserId();
-    if (!userId) return;
-
     if (
       !confirm(
         "Are you sure you want to reset your weekly plan history? This will clear all records of accepted, rejected, and suggested recipes."
@@ -141,12 +114,8 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
     }
 
     try {
-      const response = await fetch("/api/weekly-planner/reset", {
+      const response = await apiFetch("/api/weekly-planner/reset", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId }),
       });
 
       if (!response.ok) throw new Error("Failed to reset history");
@@ -156,7 +125,6 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
         `History reset successfully! Deleted ${data.deletedCount} records.`
       );
 
-      // Refresh the used recipes list
       await fetchUsedRecipes();
     } catch (error) {
       console.error("Error resetting history:", error);
@@ -165,23 +133,15 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
   };
 
   const handleAcceptRecipe = async (recipeId: number) => {
-    const userId = getUserId();
-    if (!userId) return;
-
     try {
-      // Record the acceptance
-      await fetch("/api/weekly-plan-history", {
+      await apiFetch("/api/weekly-plan-history", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId, recipeId, status: "accepted" }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeId, status: "accepted" }),
       });
 
-      // Add to saved list
       await onAddToSavedList([recipeId]);
 
-      // Remove from current plan
       setWeeklyPlan((prev) => prev.filter((recipe) => recipe.id !== recipeId));
 
       alert("Recipe added to your saved list!");
@@ -192,25 +152,17 @@ export const WeeklyPlanner = ({ onAddToSavedList }: WeeklyPlannerProps) => {
   };
 
   const handleRejectRecipe = async (recipeId: number) => {
-    const userId = getUserId();
-    if (!userId) return;
-
     try {
-      // Record the rejection
-      await fetch("/api/weekly-plan-history", {
+      await apiFetch("/api/weekly-plan-history", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ userId, recipeId, status: "rejected" }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeId, status: "rejected" }),
       });
 
-      // Remove from current plan
       setWeeklyPlan((prev) => prev.filter((recipe) => recipe.id !== recipeId));
 
       alert("Recipe rejected. Generating alternative...");
 
-      // Generate alternative recipe
       await generateWeeklyPlan();
     } catch (error) {
       console.error("Error rejecting recipe:", error);

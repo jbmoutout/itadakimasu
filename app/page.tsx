@@ -7,6 +7,7 @@ import { LoadingOverlay } from "./components/common/LoadingOverlay";
 import { AuthScreen } from "./components/auth/AuthScreen";
 import { useRouter } from "next/navigation";
 import type { SavedList, SavedIngredient, Recipe } from "@/types";
+import { apiFetch } from "./lib/api-fetch";
 
 export default function CookingPage() {
   const router = useRouter();
@@ -15,25 +16,23 @@ export default function CookingPage() {
   const [savedLists, setSavedLists] = useState<SavedList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchSavedLists = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
+  const handleLogout = useCallback(async () => {
     try {
-      const res = await fetch("/api/saved-lists", {
-        headers: { Authorization: `Bearer ${token}` },
-        // cache: "force-cache",
-        // next: {
-        //   revalidate: 30,
-        // },
-      });
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    setIsLoggedIn(false);
+    setSavedLists([]);
+  }, []);
+
+  const fetchSavedLists = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/saved-lists");
 
       if (res.status === 401) {
-        const data = await res.json();
-        if (data.error === "Token has expired") {
-          handleLogout();
-          return;
-        }
+        handleLogout();
+        return;
       }
 
       if (!res.ok) throw new Error("Failed to fetch saved lists");
@@ -41,7 +40,6 @@ export default function CookingPage() {
       const data = await res.json();
       setSavedLists(data);
 
-      // If there are no lists with recipes, redirect to /recipes
       if (
         data.length === 0 ||
         data.every((list: SavedList) => list.recipes.length === 0)
@@ -50,34 +48,34 @@ export default function CookingPage() {
       }
     } catch (error) {
       console.error("Error fetching saved lists:", error);
-      if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        handleLogout();
-      }
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [router, handleLogout]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setIsLoggedIn(true);
-      router.refresh();
-    }
-    setIsAuthChecking(false);
-  }, [router]);
+    let cancelled = false;
+    apiFetch("/api/auth/me")
+      .then((res) => {
+        if (cancelled) return;
+        setIsLoggedIn(res.ok);
+        setIsAuthChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoggedIn(false);
+        setIsAuthChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoggedIn) {
       fetchSavedLists();
     }
   }, [isLoggedIn, fetchSavedLists]);
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    setIsLoggedIn(false);
-    setSavedLists([]);
-  };
 
   const handleLogin = () => {
     setIsLoggedIn(true);
@@ -87,9 +85,6 @@ export default function CookingPage() {
     listId: number,
     ingredientId: number
   ) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     try {
       const currentList = savedLists.find((list) => list.id === listId);
       const currentIngredient = currentList?.ingredients.find(
@@ -97,12 +92,9 @@ export default function CookingPage() {
       );
       if (!currentIngredient) return;
 
-      const res = await fetch("/api/saved-lists", {
+      const res = await apiFetch("/api/saved-lists", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ingredientId,
           checked: !currentIngredient.checked,
@@ -134,15 +126,9 @@ export default function CookingPage() {
   };
 
   const handleToggleRecipeStar = async (recipeId: number) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     try {
-      const res = await fetch(`/api/recipes/${recipeId}/star`, {
+      const res = await apiFetch(`/api/recipes/${recipeId}/star`, {
         method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (!res.ok) throw new Error("Failed to update recipe star");
@@ -163,16 +149,10 @@ export default function CookingPage() {
   };
 
   const handleRemoveRecipe = async (listId: number, recipeId: number) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/saved-lists/${listId}/recipes/${recipeId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        }
+        { method: "DELETE" }
       );
 
       if (!res.ok) throw new Error("Failed to remove recipe");

@@ -13,6 +13,7 @@ import {
   RecipeWeight,
   RecipeIngredientWithSeason,
 } from "@/types";
+import { getUserId } from "@/lib/auth";
 
 // Add timeout configuration
 const FUNCTION_TIMEOUT = 25000; // 25 seconds (5 seconds buffer before Vercel's 30s limit)
@@ -32,14 +33,7 @@ export async function POST(request: NextRequest) {
   const startTime = Date.now();
   
   try {
-    const { userId } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
-    }
+    const userId = getUserId(request);
 
     // Check if we're approaching timeout
     const checkTimeout = () => {

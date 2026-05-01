@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordWeeklyPlanUsage } from "@/lib/weekly-plan-history";
+import { getUserId } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, recipeId, status } = await request.json();
+    const userId = getUserId(request);
+    const { recipeId, status } = await request.json();
 
-    if (!userId || !recipeId || !status) {
+    if (!recipeId || !status) {
       return NextResponse.json(
         {
-          error: "User ID, recipe ID, and status are required",
+          error: "Recipe ID and status are required",
         },
         { status: 400 }
       );

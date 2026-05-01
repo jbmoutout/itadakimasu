@@ -3,19 +3,12 @@ import {
   resetWeeklyPlanHistory,
   getUsedRecipes,
 } from "@/lib/weekly-plan-history";
+import { getUserId } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
+    const userId = getUserId(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // Reset the weekly plan history for the user
     const result = await resetWeeklyPlanHistory(userId);
 
     return NextResponse.json({
@@ -33,18 +26,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const userId = getUserId(request);
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
-    }
-
-    // Get all recipes that have been used in weekly plans
-    const usedRecipes = await getUsedRecipes(parseInt(userId));
+    const usedRecipes = await getUsedRecipes(userId);
 
     return NextResponse.json({
       usedRecipes,

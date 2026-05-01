@@ -3,7 +3,6 @@ import { prisma } from "../../lib/prisma";
 import { shouldIncludeIngredient } from "../../../lib/ingredients";
 import anthropic from "../../lib/anthropic";
 import * as cheerio from "cheerio";
-// import { jwtVerify } from 'jose';
 
 interface ExtractedIngredient {
   name: string;
@@ -22,15 +21,6 @@ export async function POST(request: Request) {
 
   const extractIngredients = async () => {
     try {
-      const token = request.headers.get("Authorization")?.split(" ")[1];
-      if (!token) {
-        await sendLog("Error: Unauthorized");
-        throw new Error("Unauthorized");
-      }
-
-      // const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-      // const userId = payload.userId as number;
-
       const { recipeId } = await request.json();
 
       await sendLog("Fetching recipe from database...");

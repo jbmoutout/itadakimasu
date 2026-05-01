@@ -62,21 +62,47 @@
       font-size: 14px;
       color: #666;
     }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .login-form input {
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>Select Recipes to Import</h2>
-    <div class="bookmark-list">
-      <div class="select-all">
-        <input type="checkbox" id="selectAll">
-        <label for="selectAll">Select All</label>
-      </div>
-      <div id="bookmarkList"></div>
+    <div id="loginView" class="hidden">
+      <h2>Sign in to Itadakimasu</h2>
+      <form id="loginForm" class="login-form">
+        <input type="email" id="loginEmail" placeholder="Email" required>
+        <input type="password" id="loginPassword" placeholder="Password" required>
+        <button type="submit" id="loginButton">Sign in</button>
+      </form>
+      <div class="status" id="loginStatus"></div>
     </div>
-    <button id="importButton">Import Selected</button>
-    <div class="status" id="status"></div>
+    <div id="importView" class="hidden">
+      <h2>Select Recipes to Import</h2>
+      <div class="bookmark-list">
+        <div class="select-all">
+          <input type="checkbox" id="selectAll">
+          <label for="selectAll">Select All</label>
+        </div>
+        <div id="bookmarkList"></div>
+      </div>
+      <button id="importButton">Import Selected</button>
+      <button id="logoutButton" style="background: #eee; color: #000;">Sign out</button>
+      <div class="status" id="status"></div>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
-</html> 
+</html>

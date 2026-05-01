@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { DeleteConfirmationModal } from "../components/common/DeleteConfirmationModal";
 import { useInView } from "react-intersection-observer";
+import { apiFetch } from "../lib/api-fetch";
 
 // Cache for search results
 const searchCache = new Map<string, boolean>();
@@ -52,12 +53,6 @@ export default function Home() {
 
   const fetchRecipes = useCallback(
     async (page: number = 1, search: string = "") => {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        handleLogout();
-        return;
-      }
-
       setIsFetchingRecipes(true);
       const startTime = Date.now();
 
@@ -67,8 +62,7 @@ export default function Home() {
           ...(search && { search }),
         });
 
-        const res = await fetch(`/api/recipes?${queryParams.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const res = await apiFetch(`/api/recipes?${queryParams.toString()}`, {
           cache: "force-cache",
           next: {
             revalidate: 60,
@@ -156,13 +150,22 @@ export default function Home() {
   }, [searchQuery]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setIsLoggedIn(true);
-      router.refresh();
-    }
-    setIsAuthChecking(false);
-  }, [router]);
+    let cancelled = false;
+    apiFetch("/api/auth/me")
+      .then((res) => {
+        if (cancelled) return;
+        setIsLoggedIn(res.ok);
+        setIsAuthChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoggedIn(false);
+        setIsAuthChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Add escape key handler
   useEffect(() => {
@@ -177,18 +180,12 @@ export default function Home() {
   }, [selectedRecipes.length]);
 
   const handleAddRecipe = async (url: string) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     setIsLoading(true);
 
     try {
-      const res = await fetch("/api/add-recipe", {
+      const res = await apiFetch("/api/add-recipe", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
 
@@ -213,8 +210,12 @@ export default function Home() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
     setIsLoggedIn(false);
     setRecipes([]);
     setSelectedRecipes([]);
@@ -235,23 +236,15 @@ export default function Home() {
   };
 
   const handleToggleStar = async () => {
-    const token = localStorage.getItem("token");
-    if (!token || selectedRecipes.length === 0) return;
+    if (selectedRecipes.length === 0) return;
 
     try {
-      // Toggle star status for all selected recipes
       await Promise.all(
         selectedRecipes.map((recipeId) =>
-          fetch(`/api/recipes/${recipeId}/star`, {
-            method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
+          apiFetch(`/api/recipes/${recipeId}/star`, { method: "PATCH" })
         )
       );
 
-      // Update local state
       setRecipes((prev) =>
         prev.map((r) =>
           selectedRecipes.includes(r.id) ? { ...r, starred: !r.starred } : r
@@ -264,15 +257,9 @@ export default function Home() {
   };
 
   const handleRemoveDuplicates = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     try {
-      const res = await fetch("/api/recipes/remove-duplicates", {
+      const res = await apiFetch("/api/recipes/remove-duplicates", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       });
 
       if (!res.ok) throw new Error("Failed to remove duplicates");
@@ -280,7 +267,7 @@ export default function Home() {
       const data = await res.json();
       if (data.success) {
         alert(`Successfully removed ${data.totalDuplicates} duplicate recipes`);
-        fetchRecipes(); // Refresh the recipes list
+        fetchRecipes();
       }
     } catch (error) {
       console.error("Error removing duplicates:", error);
@@ -289,23 +276,15 @@ export default function Home() {
   };
 
   const handleDelete = async () => {
-    const token = localStorage.getItem("token");
-    if (!token || selectedRecipes.length === 0) return;
+    if (selectedRecipes.length === 0) return;
 
     try {
-      // Delete all selected recipes
       await Promise.all(
         selectedRecipes.map((recipeId) =>
-          fetch(`/api/recipes/${recipeId}`, {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
+          apiFetch(`/api/recipes/${recipeId}`, { method: "DELETE" })
         )
       );
 
-      // Update local state
       setRecipes((prev) => prev.filter((r) => !selectedRecipes.includes(r.id)));
       setSelectedRecipes([]);
     } catch (error) {
@@ -315,31 +294,21 @@ export default function Home() {
   };
 
   const handleAddToList = async () => {
-    const token = localStorage.getItem("token");
-    if (!token || selectedRecipes.length === 0) return;
+    if (selectedRecipes.length === 0) return;
 
     try {
-      // First get the most recent list
-      const listsRes = await fetch("/api/saved-lists", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const listsRes = await apiFetch("/api/saved-lists");
 
       if (!listsRes.ok) {
         throw new Error("Failed to fetch saved lists");
       }
 
       const lists = await listsRes.json();
-      const mostRecentList = lists[0]; // Lists are ordered by createdAt desc
+      const mostRecentList = lists[0];
 
-      // Add recipes to the most recent list
-      const res = await fetch("/api/saved-lists", {
+      const res = await apiFetch("/api/saved-lists", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipeIds: selectedRecipes,
           listId: mostRecentList?.id,

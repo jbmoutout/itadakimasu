@@ -11,9 +11,6 @@
   "host_permissions": [
     "https://itadakimasu.vercel.app/*"
   ],
-  "externally_connectable": {
-    "matches": ["https://itadakimasu.vercel.app/*"]
-  },
   "background": {
     "service_worker": "background.js"
   },

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { jwtVerify } from "jose";
+import { getUserId } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import anthropic from "@/app/lib/anthropic";
 import { RecipeWithIngredients, RecipeIngredientWithSeason } from "@/types";
@@ -18,16 +18,7 @@ interface WeeklyPlanRecipe {
 
 export async function POST(request: Request) {
   try {
-    const token = request.headers.get("Authorization")?.split(" ")[1];
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const { rejectedRecipeId, currentWeeklyPlan } = await request.json();
 
