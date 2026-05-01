@@ -1,4 +1,4 @@
-import { jwtVerify } from "jose";
+import { getUserId } from "@/lib/auth";
 import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
@@ -8,16 +8,7 @@ const CACHE_MAX_AGE = 30; // 30 seconds
 
 export async function GET(request: Request) {
   try {
-    const token = request.headers.get("Authorization")?.split(" ")[1];
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const lists = await prisma.savedList.findMany({
       where: { userId },
@@ -61,16 +52,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const token = request.headers.get("Authorization")?.split(" ")[1];
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const body = await request.json();
     const { recipeIds, listId } = body;
@@ -391,16 +373,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const token = request.headers.get("Authorization")?.split(" ")[1];
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(
-      token,
-      new TextEncoder().encode(process.env.JWT_SECRET)
-    );
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const body = await request.json();
     const { ingredientId, checked } = body;

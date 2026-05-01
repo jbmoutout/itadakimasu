@@ -13,17 +13,11 @@ import {
   RecipeWeight,
   RecipeIngredientWithSeason,
 } from "@/types";
+import { getUserId } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
-    }
+    const userId = getUserId(request);
 
     // Clean up old history records (older than 1 month)
     await cleanupWeeklyPlanHistory();

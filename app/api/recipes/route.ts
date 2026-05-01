@@ -1,33 +1,18 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '../../../lib/prisma';
 import { normalizeQuantity, normalizeUnit, shouldIncludeIngredient } from '../../../lib/ingredients';
-import { jwtVerify } from 'jose';
+import { getUserId } from '@/lib/auth';
 import { Prisma } from '@prisma/client';
 
 const PAGE_SIZE = 12; // Number of recipes per page
 
 export async function GET(request: Request) {
   try {
-    const token = request.headers.get('Authorization')?.split(' ')[1];
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userId = getUserId(request);
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const search = searchParams.get('search') || '';
-
-    let userId: number;
-    try {
-      const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-      userId = payload.userId as number;
-      if (!userId) {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-      }
-    } catch (jwtError) {
-      console.error('JWT verification failed:', jwtError);
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
 
     // Build the where clause for search
     const where: Prisma.RecipeWhereInput = {
@@ -94,13 +79,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const token = request.headers.get('Authorization')?.split(' ')[1];
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-    const userId = payload.userId as number;
+    const userId = getUserId(request);
 
     const body = await request.json();
     const { url, title, description, image, ingredients } = body;
