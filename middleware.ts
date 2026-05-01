@@ -3,17 +3,31 @@ import type { NextRequest } from 'next/server';
 import { jwtVerify, errors } from 'jose';
 
 export async function middleware(request: NextRequest) {
-  const token = request.headers.get('Authorization')?.split(' ')[1];
+  const cookieToken = request.cookies.get('session')?.value;
+  const headerToken = request.headers.get('authorization')?.split(' ')[1];
+  const token = cookieToken ?? headerToken;
 
   if (!token) {
     return NextResponse.json({ error: 'No token provided' }, { status: 401 });
   }
 
   try {
-    await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET));
-    return NextResponse.next();
+    const { payload } = await jwtVerify(
+      token,
+      new TextEncoder().encode(process.env.JWT_SECRET)
+    );
+
+    const userId = payload.userId;
+    if (typeof userId !== 'number') {
+      return NextResponse.json({ error: 'Invalid token payload' }, { status: 401 });
+    }
+
+    const headers = new Headers(request.headers);
+    headers.delete('x-user-id');
+    headers.set('x-user-id', String(userId));
+
+    return NextResponse.next({ request: { headers } });
   } catch (error: unknown) {
-    // Handle specific JWT errors
     if (error instanceof errors.JWTExpired) {
       return NextResponse.json({ error: 'Token has expired' }, { status: 401 });
     }
@@ -25,5 +39,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/add-recipe', '/api/generate-shopping-list', '/api/update-shopping-list', '/api/last-shopping-list', '/api/recipes'],
+  matcher: ['/api/((?!auth/login|auth/signup).*)'],
 };
