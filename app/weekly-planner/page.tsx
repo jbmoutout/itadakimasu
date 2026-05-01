@@ -5,31 +5,32 @@ import { Header } from "../components/layout/Header";
 import { WeeklyPlanner } from "../components/recipes/WeeklyPlanner";
 import { LoadingOverlay } from "../components/common/LoadingOverlay";
 import { AuthScreen } from "../components/auth/AuthScreen";
-import { useRouter } from "next/navigation";
 import type { SavedList } from "@/types";
+import { apiFetch } from "../lib/api-fetch";
 
 export default function WeeklyPlannerPage() {
-  const router = useRouter();
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [savedLists, setSavedLists] = useState<SavedList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchSavedLists = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
+  const handleLogout = async () => {
     try {
-      const res = await fetch("/api/saved-lists", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    setIsLoggedIn(false);
+    setSavedLists([]);
+  };
+
+  const fetchSavedLists = async () => {
+    try {
+      const res = await apiFetch("/api/saved-lists");
 
       if (res.status === 401) {
-        const data = await res.json();
-        if (data.error === "Token has expired") {
-          handleLogout();
-          return;
-        }
+        handleLogout();
+        return;
       }
 
       if (!res.ok) throw new Error("Failed to fetch saved lists");
@@ -38,22 +39,28 @@ export default function WeeklyPlannerPage() {
       setSavedLists(data);
     } catch (error) {
       console.error("Error fetching saved lists:", error);
-      if (error instanceof Error && error.message.includes("Failed to fetch")) {
-        handleLogout();
-      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setIsLoggedIn(true);
-      router.refresh();
-    }
-    setIsAuthChecking(false);
-  }, [router]);
+    let cancelled = false;
+    apiFetch("/api/auth/me")
+      .then((res) => {
+        if (cancelled) return;
+        setIsLoggedIn(res.ok);
+        setIsAuthChecking(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoggedIn(false);
+        setIsAuthChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -61,35 +68,19 @@ export default function WeeklyPlannerPage() {
     }
   }, [isLoggedIn]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    setIsLoggedIn(false);
-    setSavedLists([]);
-  };
-
   const handleLogin = () => {
     setIsLoggedIn(true);
   };
 
   const handleAddToSavedList = async (recipeIds: number[]) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
     try {
-      // Get the first saved list or create a new one
       let listId = savedLists[0]?.id;
 
       if (!listId) {
-        // Create a new list if none exists
-        const createResponse = await fetch("/api/saved-lists", {
+        const createResponse = await apiFetch("/api/saved-lists", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            recipeIds: [],
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipeIds: [] }),
         });
 
         if (!createResponse.ok) throw new Error("Failed to create saved list");
@@ -98,22 +89,14 @@ export default function WeeklyPlannerPage() {
         setSavedLists([newList]);
       }
 
-      // Add recipes to the list
-      const response = await fetch("/api/saved-lists", {
+      const response = await apiFetch("/api/saved-lists", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          recipeIds,
-          listId,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipeIds, listId }),
       });
 
       if (!response.ok) throw new Error("Failed to add recipes to saved list");
 
-      // Refresh the saved lists
       await fetchSavedLists();
     } catch (error) {
       console.error("Error adding recipes to saved list:", error);

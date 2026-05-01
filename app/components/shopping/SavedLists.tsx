@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "../../lib/api-fetch";
 
 interface SavedIngredient {
   id: number;
@@ -473,12 +474,9 @@ export const SavedLists = ({
     if (!activeList) return;
 
     try {
-      const response = await fetch("/api/saved-lists", {
+      const response = await apiFetch("/api/saved-lists", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipeIds: [recipeId],
           listId: activeList.id,
