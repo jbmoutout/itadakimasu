@@ -2,6 +2,14 @@
 const API_URL = "https://itadakimasu.vercel.app/api"; // Production URL
 
 // DOM Elements
+const loginView = document.getElementById("loginView");
+const importView = document.getElementById("importView");
+const loginForm = document.getElementById("loginForm");
+const loginEmail = document.getElementById("loginEmail");
+const loginPassword = document.getElementById("loginPassword");
+const loginButton = document.getElementById("loginButton");
+const loginStatus = document.getElementById("loginStatus");
+const logoutButton = document.getElementById("logoutButton");
 const bookmarkList = document.getElementById("bookmarkList");
 const importButton = document.getElementById("importButton");
 const status = document.getElementById("status");
@@ -10,180 +18,163 @@ const selectAllCheckbox = document.getElementById("selectAll");
 // State
 let bookmarks = [];
 let selectedBookmarks = new Set();
-let existingRecipes = new Set(); // Store existing recipe URLs
+let existingRecipes = new Set();
 
 // Initialize
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("Popup initialized");
-  try {
-    // Check if user is logged in first by checking both storage areas
-    console.log("Checking storage for token...");
-    const [localToken, syncToken] = await Promise.all([
-      new Promise((resolve) =>
-        chrome.storage.local.get("token", (result) => {
-          console.log("Local storage result:", result);
-          resolve(result.token);
-        })
-      ),
-      new Promise((resolve) =>
-        chrome.storage.sync.get("token", (result) => {
-          console.log("Sync storage result:", result);
-          resolve(result.token);
-        })
-      ),
-    ]);
-
-    console.log("Storage check complete:", { localToken, syncToken });
-    const token = localToken || syncToken;
-
-    if (!token) {
-      console.log("No token found in either storage");
-      status.textContent = "Please log in to Itadakimasu first";
-      importButton.disabled = true;
-      selectAllCheckbox.disabled = true;
-      return;
-    }
-
-    console.log("Token found:", token.slice(0, 10) + "...");
-
-    // Store token in local storage if it was in sync
-    if (!localToken && syncToken) {
-      console.log("Copying token from sync to local storage");
-      chrome.storage.local.set({ token: syncToken });
-    }
-
-    // Fetch existing recipes for the user
-    try {
-      console.log("Fetching recipes from:", `${API_URL}/recipes`);
-      const response = await fetch(`${API_URL}/recipes`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        mode: "cors",
-      });
-
-      console.log("Response status:", response.status);
-      console.log(
-        "Response headers:",
-        Object.fromEntries(response.headers.entries())
-      );
-
-      if (response.ok) {
-        const recipes = await response.json();
-        console.log("Recipes fetched:", recipes.length);
-        existingRecipes = new Set(recipes.map((recipe) => recipe.url));
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("Failed to fetch recipes:", {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData.error || "Unknown error",
-          headers: Object.fromEntries(response.headers.entries()),
-        });
-
-        // Handle JWT expired error
-        if (errorData.error?.includes("JWTExpired")) {
-          // Clear token from both storage areas
-          await Promise.all([
-            chrome.storage.local.remove("token"),
-            chrome.storage.sync.remove("token"),
-          ]);
-          status.textContent =
-            "Your session has expired. Please log in to Itadakimasu again.";
-          importButton.disabled = true;
-          selectAllCheckbox.disabled = true;
-          return;
-        }
-
-        status.textContent = `Error fetching recipes: ${
-          errorData.error || response.statusText || "Unknown error"
-        }`;
-        importButton.disabled = true;
-        selectAllCheckbox.disabled = true;
-        return;
-      }
-    } catch (error) {
-      console.error("Error fetching existing recipes:", error);
-      console.error("Error details:", {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
-      });
-      status.textContent = `Error connecting to Itadakimasu: ${error.message}`;
-      importButton.disabled = true;
-      selectAllCheckbox.disabled = true;
-      return;
-    }
-
-    // Get bookmarks from Chrome
-    const tree = await chrome.bookmarks.getTree();
-    console.log("Full bookmark tree:", JSON.stringify(tree, null, 2));
-
-    const allBookmarks = findMiamBookmarks(tree);
-    console.log("Found MIAM bookmarks:", allBookmarks);
-
-    // Filter out already saved bookmarks
-    bookmarks = allBookmarks.filter(
-      (bookmark) => !existingRecipes.has(bookmark.url)
-    );
-    console.log("New bookmarks to import:", bookmarks);
-
-    if (bookmarks.length === 0) {
-      status.textContent =
-        existingRecipes.size > 0
-          ? "All bookmarks from MIAM folder are already saved"
-          : "No bookmarks found in the MIAM folder";
-      importButton.disabled = true;
-      selectAllCheckbox.disabled = true;
-      return;
-    }
-
-    // Render bookmarks
-    renderBookmarks();
-  } catch (error) {
-    console.error("Error loading bookmarks:", error);
-    status.textContent = "Error loading bookmarks";
+  const token = await readToken();
+  if (token) {
+    await showImportView(token);
+  } else {
+    showLoginView();
   }
 });
 
-// Event Listeners
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  loginButton.disabled = true;
+  loginStatus.textContent = "Signing in...";
+
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: loginEmail.value,
+        password: loginPassword.value,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "Sign-in failed");
+    }
+
+    const { token } = await response.json();
+    if (!token) throw new Error("No token returned");
+
+    await chrome.storage.local.set({ token });
+    loginStatus.textContent = "";
+    await showImportView(token);
+  } catch (error) {
+    console.error("Login error:", error);
+    loginStatus.textContent = error.message || "Sign-in failed";
+  } finally {
+    loginButton.disabled = false;
+  }
+});
+
+logoutButton?.addEventListener("click", async () => {
+  await chrome.storage.local.remove("token");
+  await chrome.storage.sync.remove("token");
+  showLoginView();
+});
+
 importButton.addEventListener("click", importSelectedBookmarks);
 selectAllCheckbox?.addEventListener("change", (e) => {
   if (e.target.checked) {
-    // Select all bookmarks
     bookmarks.forEach((bookmark) => selectedBookmarks.add(bookmark.id));
   } else {
-    // Deselect all bookmarks
     selectedBookmarks.clear();
   }
   renderBookmarks();
   importButton.disabled = selectedBookmarks.size === 0;
 });
 
-// Helper Functions
-function findMiamBookmarks(nodes) {
-  // First, find the bookmark bar
-  const bookmarkBar = nodes[0]?.children?.find((node) => node.id === "1");
-  console.log("Bookmark bar:", bookmarkBar);
+// Views
+function showLoginView() {
+  loginView.classList.remove("hidden");
+  importView.classList.add("hidden");
+  loginEmail.value = "";
+  loginPassword.value = "";
+}
 
-  if (!bookmarkBar) {
-    console.log("Bookmark bar not found");
-    return [];
+async function showImportView(token) {
+  loginView.classList.add("hidden");
+  importView.classList.remove("hidden");
+  await loadBookmarks(token);
+}
+
+async function readToken() {
+  const [localResult, syncResult] = await Promise.all([
+    chrome.storage.local.get("token"),
+    chrome.storage.sync.get("token"),
+  ]);
+  const token = localResult.token || syncResult.token;
+  if (!token) return null;
+  if (!localResult.token && syncResult.token) {
+    await chrome.storage.local.set({ token: syncResult.token });
+  }
+  return token;
+}
+
+async function loadBookmarks(token) {
+  status.textContent = "Loading…";
+  importButton.disabled = true;
+  selectAllCheckbox.disabled = true;
+
+  try {
+    const response = await fetch(`${API_URL}/recipes`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      mode: "cors",
+    });
+
+    if (response.status === 401) {
+      await chrome.storage.local.remove("token");
+      await chrome.storage.sync.remove("token");
+      showLoginView();
+      return;
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      status.textContent = `Error fetching recipes: ${
+        errorData.error || response.statusText || "Unknown error"
+      }`;
+      return;
+    }
+
+    const data = await response.json();
+    const recipes = Array.isArray(data) ? data : data.recipes || [];
+    existingRecipes = new Set(recipes.map((recipe) => recipe.url));
+  } catch (error) {
+    console.error("Error fetching existing recipes:", error);
+    status.textContent = `Error connecting to Itadakimasu: ${error.message}`;
+    return;
   }
 
-  // Then find the MIAM folder
+  const tree = await chrome.bookmarks.getTree();
+  const allBookmarks = findMiamBookmarks(tree);
+  bookmarks = allBookmarks.filter(
+    (bookmark) => !existingRecipes.has(bookmark.url)
+  );
+
+  if (bookmarks.length === 0) {
+    status.textContent =
+      existingRecipes.size > 0
+        ? "All bookmarks from MIAM folder are already saved"
+        : "No bookmarks found in the MIAM folder";
+    return;
+  }
+
+  selectAllCheckbox.disabled = false;
+  status.textContent = "";
+  renderBookmarks();
+}
+
+// Helper Functions
+function findMiamBookmarks(nodes) {
+  const bookmarkBar = nodes[0]?.children?.find((node) => node.id === "1");
+  if (!bookmarkBar) return [];
+
   const miamFolder = bookmarkBar.children?.find(
     (node) => node.title === "MIAM"
   );
-  console.log("MIAM folder:", miamFolder);
+  if (!miamFolder) return [];
 
-  if (!miamFolder) {
-    console.log("MIAM folder not found");
-    return [];
-  }
-
-  // Get all bookmarks from the MIAM folder
   return flattenBookmarks([miamFolder]);
 }
 
@@ -205,7 +196,6 @@ function flattenBookmarks(nodes) {
 }
 
 function renderBookmarks() {
-  // Update select all checkbox state
   if (selectAllCheckbox) {
     selectAllCheckbox.checked =
       bookmarks.length > 0 && selectedBookmarks.size === bookmarks.length;
@@ -224,16 +214,14 @@ function renderBookmarks() {
     )
     .join("");
 
-  // Add event listeners to checkboxes
   document.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
-    if (checkbox.id === "selectAll") return; // Skip the select all checkbox
+    if (checkbox.id === "selectAll") return;
     checkbox.addEventListener("change", (e) => {
       if (e.target.checked) {
         selectedBookmarks.add(e.target.id);
       } else {
         selectedBookmarks.delete(e.target.id);
       }
-      // Update select all checkbox state
       if (selectAllCheckbox) {
         selectAllCheckbox.checked = selectedBookmarks.size === bookmarks.length;
       }
@@ -247,9 +235,11 @@ async function importSelectedBookmarks() {
     importButton.disabled = true;
     status.textContent = "Importing recipes...";
 
-    const token = await chrome.storage.local.get("token");
-    if (!token.token) {
-      throw new Error("Not logged in");
+    const stored = await chrome.storage.local.get("token");
+    const token = stored.token;
+    if (!token) {
+      showLoginView();
+      return;
     }
 
     const selectedRecipes = bookmarks.filter((b) =>
@@ -261,12 +251,11 @@ async function importSelectedBookmarks() {
 
     for (const recipe of selectedRecipes) {
       try {
-        // First, add the recipe
         const addResponse = await fetch(`${API_URL}/add-recipe`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token.token}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             url: recipe.url,
@@ -285,12 +274,11 @@ async function importSelectedBookmarks() {
 
         const { recipe: newRecipe } = await addResponse.json();
 
-        // Then, trigger ingredient extraction and wait for it to complete
         const extractResponse = await fetch(`${API_URL}/extract-ingredients`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token.token}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             recipeId: newRecipe.id,
@@ -302,21 +290,16 @@ async function importSelectedBookmarks() {
           console.error("Failed to extract ingredients:", errorText);
           ingredientErrorCount++;
         } else {
-          // Read the stream to ensure it completes
           const reader = extractResponse.body.getReader();
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            // Convert the chunk to text
             const chunk = new TextDecoder().decode(value);
             const lines = chunk.split("\n");
             for (const line of lines) {
               if (line.trim()) {
                 try {
                   const data = JSON.parse(line);
-                  if (data.log) {
-                    console.log("Extraction log:", data.log);
-                  }
                   if (data.error) {
                     console.error("Extraction error:", data.error);
                     ingredientErrorCount++;
@@ -329,14 +312,13 @@ async function importSelectedBookmarks() {
           }
         }
 
-        // Finally, trigger metadata fetching
         const metadataResponse = await fetch(
           `${API_URL}/preview-metadata?url=${encodeURIComponent(
             recipe.url
           )}&recipeId=${newRecipe.id}`,
           {
             headers: {
-              Authorization: `Bearer ${token.token}`,
+              Authorization: `Bearer ${token}`,
             },
           }
         );
