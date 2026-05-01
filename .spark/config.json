@@ -1,0 +1,7 @@
+{
+  "theme": "default",
+  "weather": {
+    "location": "Paris"
+  },
+  "timezones": ["Asia/Bangkok"]
+}
