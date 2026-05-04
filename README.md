@@ -2,23 +2,47 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### With Docker (recommended)
+
+Requires [OrbStack](https://orbstack.dev/) or Docker Desktop.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d
 ```
 
+This starts a PostgreSQL database and the Next.js dev server with hot reload. The app is available at [http://localhost:3000](http://localhost:3000).
+
+Your `.env` file is read automatically for `ANTHROPIC_API_KEY`. Database credentials are self-contained within the Docker network.
+
+| Command | Description |
+|---|---|
+| `docker compose up -d` | Start Postgres + dev server |
+| `docker compose exec app sh` | Shell into the container |
+| `docker compose logs -f app` | Tail app logs |
+| `docker compose down` | Stop everything |
+| `docker compose down -v` | Stop + wipe DB data |
+
+### Coding agents
+
+The Docker image comes with [opencode](https://opencode.ai) and [mattpocock/skills](https://github.com/mattpocock/skills) pre-installed.
+
+```bash
+docker compose exec app sh   # shell into the container
+opencode                      # launch the coding agent
+```
+
+opencode is configured to use **Qwen 3.5 9B** via OpenRouter (see `opencode.json`). Add your `OPENROUTER_API_KEY` to `.env` — see `.env.example`.
+
+### Without Docker
+
+```bash
+npm install
+npm run dev
+```
+
+Requires a PostgreSQL database configured via `DATABASE_URL` in `.env`.
+
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Features
 
@@ -51,8 +75,11 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Tech Stack
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Framework**: Next.js 14 (App Router)
+- **Database**: PostgreSQL + Prisma ORM
+- **AI**: Claude (Anthropic SDK)
+- **UI**: Tailwind CSS, Radix UI, Lucide icons
+- **Auth**: JWT (jose / jsonwebtoken)
+- **Deploy**: Vercel
