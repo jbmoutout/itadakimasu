@@ -1,0 +1,18 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env               # all vars available in every shell (exec, run, etc.)
+    volumes:
+      - .:/app                   # live-mount source for hot reload
+      - /app/node_modules        # keep container's node_modules isolated
+      - /app/.next               # keep build cache inside container
+      - opencode-home:/root/.opencode  # persist opencode config + skills across rebuilds
+    command: ["sh", "-c", "npx prisma migrate deploy 2>/dev/null || npx prisma db push --accept-data-loss && npm run dev"]
+
+volumes:
+  opencode-home:
