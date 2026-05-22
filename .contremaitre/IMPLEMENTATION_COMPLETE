@@ -1,0 +1,1 @@
+Prisma client seam consolidated: 11 relative imports normalized to @/lib/prisma, redundant app/lib/prisma.ts deleted, single canonical singleton remains with no logging.

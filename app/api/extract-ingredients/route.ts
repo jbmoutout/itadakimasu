@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { shouldIncludeIngredient } from "../../../lib/ingredients";
 import anthropic from "../../lib/anthropic";
 import * as cheerio from "cheerio";

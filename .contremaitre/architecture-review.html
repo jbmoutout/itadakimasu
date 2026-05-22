@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — Itadakimasu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <header>
+        <h1 class="text-3xl font-serif font-bold text-slate-800">Architecture review — Itadakimasu</h1>
+        <p class="text-sm text-slate-500 mt-1">22 May 2026</p>
+        <div class="flex gap-4 mt-4 text-xs">
+          <span><span class="inline-block w-3 h-3 border border-slate-600 bg-white align-middle mr-1"></span> module</span>
+          <span><span class="inline-block w-3 h-3 border border-slate-600 border-dashed align-middle mr-1"></span> seam</span>
+          <span><span class="inline-block w-3 h-3 bg-red-600 align-middle mr-1"></span> leakage</span>
+          <span><span class="inline-block w-3 h-3 bg-slate-800 align-middle mr-1"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- Candidate 1: Dual Prisma Singletons -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Consolidate the Prisma client seam</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">in-process</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> lib/prisma.ts</p>
+            <p><span class="text-slate-400">#</span> app/lib/prisma.ts</p>
+            <p><span class="text-slate-400">#</span> 20 route files (split between two import paths)</p>
+          </div>
+
+          <!-- Before / After diagram -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <pre class="mermaid">
+                flowchart LR
+                  subgraph Before
+                    A1[lib/prisma.ts<br/>no logging] --> Q1[PrismaClient A]
+                    A2[app/lib/prisma.ts<br/>has logging] --> Q2[PrismaClient B]
+                    R1[recipes/route.ts] --> A2
+                    R2[star/route.ts] --> A1
+                    R3[saved-lists/route.ts] --> A2
+                    R4[more routes...] --> A1
+                  end
+                  classDef leak fill:#fee2e2,stroke:#dc2626;
+                  class Q1,Q2 leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <pre class="mermaid">
+                flowchart LR
+                  subgraph After
+                    B[lib/prisma.ts<br/>canonical singleton] --> P[(PrismaClient)]
+                    R1[all routes] --> B
+                  end
+                  classDef deep fill:#1e293b,stroke:#0f172a,color:#fff;
+                  class B deep
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> Two PrismaClient instances with different configs compete. Connection pool doubles; query logging is inconsistent.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Delete app/lib/prisma.ts. All routes import from the canonical @/lib/prisma alias.</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> one DB config, one connection pool</li>
+            <li><span class="font-semibold">Leverage:</span> consistent logging everywhere</li>
+            <li>Delete 10 shallow re-imports</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 2: Unauthenticated Routes -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Seal the auth seam in every handler</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">ports &amp; adapters</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> app/api/update-shopping-list/route.ts</p>
+            <p><span class="text-slate-400">#</span> app/api/preview-metadata/route.ts</p>
+            <p><span class="text-slate-400">#</span> app/api/ingredients/route.ts</p>
+            <p><span class="text-slate-400">#</span> app/api/cleanup/route.ts</p>
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <pre class="mermaid">
+              flowchart LR
+                subgraph Before
+                  MW[middleware] -->|x-user-id header| H1[update-shopping-list]
+                  MW -->|x-user-id header| H2[preview-metadata]
+                  H1 -.leak.-> D1[(DB: no userId filter)]
+                  H2 -.leak.-> D2[(DB: no userId filter)]
+                end
+                subgraph After
+                  MW2[middleware] -->|x-user-id| H3[withAuth wrapper]
+                  H3 --> H4[handler(userId)]
+                  H4 --> D3[(DB: userId scoped)]
+                end
+                classDef leak stroke:#dc2626,stroke-width:2px;
+                class H1,H2,D1,D2 leak
+            </pre>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> 4 routes ignore x-user-id from middleware; any authenticated user can read/write any other user's data.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Add getUserId() call or wrap each handler with a withAuth() factory that injects userId.</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> auth enforcement at each seam</li>
+            <li><span class="font-semibold">Leverage:</span> one wrapper pattern, 4 call sites fixed</li>
+            <li>Eliminates cross-user data access vector</li>
+          </ul>
+
+          <div class="bg-amber-50 border-l-4 border-amber-400 p-3 text-sm text-amber-900">
+            <span class="font-semibold">ADR-0001 alignment:</span> middleware already enforces auth at ingress. This candidate closes the gap where handlers ignore the trusted header — it completes the ADR, not contradicts it.
+          </div>
+        </article>
+
+        <!-- Candidate 3: Weekly Planner God Function -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Deepen the weekly planner module</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">in-process</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> app/api/weekly-planner/route.ts (425 lines)</p>
+            <p><span class="text-slate-400">#</span> app/api/weekly-planner/alternatives/route.ts</p>
+            <p><span class="text-slate-400">#</span> lib/weekly-planner-weights.ts</p>
+            <p><span class="text-slate-400">#</span> lib/weekly-plan-history.ts</p>
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <pre class="mermaid">
+              flowchart TB
+                subgraph Before
+                  ROUTE[weekly-planner/route.ts<br/>425 lines] --> AUTH[auth]
+                  ROUTE --> DB[DB queries]
+                  ROUTE --> SCORE[scoring fns]
+                  ROUTE --> PROMPT[AI prompt<br/>string literal]
+                  ROUTE --> FORMAT[response<br/>formatting]
+                end
+                subgraph After
+                  THIN[route.ts<br/>~10 lines] --> SVC[planner-service.ts]
+                  SVC --> SCORE2[scoring.ts]
+                  SVC --> PROMPT2[prompt-builder.ts]
+                  SVC --> FORMAT2[response-formatter.ts]
+                end
+                classDef deep fill:#1e293b,stroke:#0f172a,color:#fff;
+                class SVC deep
+            </pre>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> 425-line route handler mixes auth, DB, scoring, AI prompts, and formatting. Untestable; scoring logic duplicated with alternatives route.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Extract planner-service, scoring, prompt-builder, and response-formatter into separate modules. Route becomes a thin orchestrator.</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> each concern in its own module</li>
+            <li><span class="font-semibold">Leverage:</span> scoring re-usable by alternatives route</li>
+            <li>Test scoring &amp; formatting without HTTP</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 4: Duplicated Ingredient Aggregation -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Collapse ingredient aggregation into one module</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 text-emerald-800">Strong</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">in-process</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> app/api/saved-lists/route.ts (3 copies inside)</p>
+            <p><span class="text-slate-400">#</span> app/api/saved-lists/[listId]/recipes/route.ts</p>
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <pre class="mermaid">
+              flowchart LR
+                subgraph Before
+                  C1[new list<br/>route.ts:188-233] --> AG1[aggregate<br/>40 lines]
+                  C2[append to list<br/>route.ts:270-324] --> AG2[aggregate<br/>40 lines]
+                  C3[listId/recipes<br/>route.ts:56-98] --> AG3[aggregate<br/>40 lines]
+                end
+                subgraph After
+                  C1N --> AGG[aggregateAndUpsert<br/>1 module]
+                  C2N --> AGG
+                  C3N --> AGG
+                end
+                classDef leak fill:#fee2e2,stroke:#dc2626;
+                class AG1,AG2,AG3 leak
+                classDef deep fill:#1e293b,stroke:#0f172a,color:#fff;
+                class AGG deep
+            </pre>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> Identical ~40-line ingredient aggregation block copy-pasted into 3 call sites. Fixing a bug requires fixing it in all three.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Extract into lib/shopping-list/ingredient-aggregator.ts. Each call site becomes one line: await aggregateAndUpsertIngredients(prisma, listId, recipes).</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> aggregation logic lives in one place</li>
+            <li><span class="font-semibold">Leverage:</span> 1 module replaces 120 duplicated lines</li>
+            <li>Tests hit one interface</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 5: Duplicated Star/Toggle -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Consolidate recipe star toggle</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">in-process</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> app/api/recipes/[recipeId]/star/route.ts</p>
+            <p><span class="text-slate-400">#</span> app/api/rating/route.ts</p>
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <pre class="mermaid">
+              flowchart LR
+                subgraph Before
+                  E1[PATCH /star] --> S1[findFirst + update<br/>starred toggle]
+                  E2[POST /rating] --> S2[findUnique + update<br/>starred toggle]
+                  S1 -.leak.-> DIFF[response: includes ingredients]
+                  S2 -.leak.-> DIFF2[response: no ingredients]
+                end
+                subgraph After
+                  E3[PATCH /star] --> S3[canonical toggle<br/>consistent response]
+                end
+                classDef leak stroke:#dc2626,stroke-width:2px;
+                class S2,DIFF,DIFF2 leak
+                classDef deep fill:#1e293b,stroke:#0f172a,color:#fff;
+                class S3 deep
+            </pre>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> Two routes toggle the same boolean with different response shapes. Duplicated Prisma queries, inconsistent API surface.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Deprecate POST /api/rating. Keep PATCH /api/recipes/[recipeId]/star as the single canonical endpoint.</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> one source of truth for starring</li>
+            <li><span class="font-semibold">Leverage:</span> eliminates duplicated Prisma queries</li>
+            <li>Consistent response shape</li>
+          </ul>
+        </article>
+
+        <!-- Candidate 6: Mixed Client/Server in lib/ingredients.ts -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif font-bold">Split the ingredient utilities module</h2>
+            <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800">Worth exploring</span>
+          </div>
+          <p class="text-xs text-slate-500 uppercase tracking-wider">ports &amp; adapters</p>
+
+          <div class="font-mono text-sm text-slate-600 space-y-0.5">
+            <p><span class="text-slate-400">#</span> lib/ingredients.ts</p>
+            <p><span class="text-slate-400">#</span> 4 importing route files</p>
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <pre class="mermaid">
+              flowchart LR
+                subgraph Before
+                  LI[lib/ingredients.ts] --> PURE[normalizeUnit<br/>normalizeQuantity<br/>shouldInclude]
+                  LI -.leak.-> CLIENT[getExistingIngredients<br/>calls fetch('/api/ingredients')]
+                  SERVER[server routes] --> LI
+                  SERVER -.leak.-> RUNTIME[Node.js + fetch<br/>with relative URL]
+                end
+                subgraph After
+                  PURE2[lib/ingredient-utils.ts] --> U[normalizeUnit etc.]
+                  INLINE[getExistingIngredients<br/>inlined in component]
+                end
+                classDef leak stroke:#dc2626,stroke-width:2px;
+                class LI,CLIENT,RUNTIME leak
+            </pre>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem:</span> lib/ingredients.ts exports both pure server-safe utilities and a client-side fetch(). Server imports risk runtime failure from relative-URL fetch.</p>
+          <p class="text-sm"><span class="font-semibold">Solution:</span> Extract pure functions to lib/ingredient-utils.ts. Inline getExistingIngredients into the component that calls it.</p>
+          <ul class="text-sm text-slate-600 list-disc list-inside space-y-0.5">
+            <li><span class="font-semibold">Locality:</span> pure utilities have no environment deps</li>
+            <li><span class="font-semibold">Leverage:</span> server code safely imports pure functions</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <!-- Top recommendation -->
+      <section id="top-recommendation" class="bg-slate-800 text-white rounded-xl p-8">
+        <h2 class="text-2xl font-serif font-bold mb-2">Top recommendation</h2>
+        <p class="text-slate-300 mb-1">
+          <span class="font-semibold text-white">Consolidate the Prisma client seam</span> — it's the cheapest, safest, highest-impact win.
+        </p>
+        <p class="text-sm text-slate-400">
+          Two singleton files is a bug that compounds daily. Every new route imports one or the other, widening the gap. Deleting one file and fixing the imports takes minutes, eliminates the connection-pool doubling, and makes logging uniform. It also removes a recurring source of WTF for every developer who discovers the two files.
+        </p>
+        <p class="text-sm text-slate-400 mt-2">
+          Closely followed by the <span class="text-white">weekly planner deepening</span> and the <span class="text-white">ingredient aggregation extraction</span>, which unlock testability and eliminate copy-paste debt respectively.
+        </p>
+        <a href="#candidates" class="text-emerald-400 text-sm underline mt-2 inline-block">See all candidates &rarr;</a>
+      </section>
+
+    </main>
+  </body>
+</html>

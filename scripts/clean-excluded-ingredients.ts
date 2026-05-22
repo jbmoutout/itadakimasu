@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { EXCLUDED_INGREDIENTS } from '../lib/ingredients';
 
 async function cleanExcludedIngredients() {
