@@ -1,0 +1,1 @@
+Prisma access seam consolidated: single canonical singleton at lib/prisma.ts with LOG_QUERIES env-var guard, app/lib/prisma.ts deleted, weekly-plan-history.ts ported from 5 raw-SQL calls to typed Prisma API, and 9 relative imports rewritten to @/lib/prisma.
