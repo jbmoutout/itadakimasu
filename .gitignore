@@ -40,3 +40,4 @@ next-env.d.ts
 
 # spark runtime state
 .spark/state.json
+.omx
