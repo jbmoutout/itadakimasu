@@ -1,5 +1,5 @@
 import { getUserId } from "@/lib/auth";
-import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
+import { aggregateIngredients } from "@/lib/saved-lists";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -185,28 +185,10 @@ export async function POST(request: Request) {
         });
 
         // Process ingredients for existing list
-        const ingredientMap = new Map();
-        recipes.forEach((recipe) => {
-          recipe.ingredients.forEach((ri) => {
-            const key = `${ri.ingredient.id}-${ri.unit}`;
-            if (ingredientMap.has(key)) {
-              const existing = ingredientMap.get(key);
-              existing.quantity += ri.quantity || 0;
-            } else {
-              ingredientMap.set(key, {
-                ingredientId: ri.ingredient.id,
-                quantity: ri.quantity || 0,
-                unit: ri.unit || "unit",
-                category: ri.ingredient.category || "groceries",
-              });
-            }
-          });
-        });
-
-        // Update ingredients
-        if (ingredientMap.size > 0) {
+        const aggregated = aggregateIngredients(recipes);
+        if (aggregated.length > 0) {
           await Promise.all(
-            Array.from(ingredientMap.values()).map((item) =>
+            aggregated.map((item) =>
               prisma.savedIngredient.upsert({
                 where: {
                   savedListId_ingredientId: {
@@ -217,14 +199,14 @@ export async function POST(request: Request) {
                 create: {
                   savedListId: savedList!.id,
                   ingredientId: item.ingredientId,
-                  quantity: normalizeQuantity(item.quantity),
-                  unit: normalizeUnit(item.unit),
+                  quantity: item.quantity,
+                  unit: item.unit,
                   category: item.category,
                   checked: false,
                 },
                 update: {
-                  quantity: normalizeQuantity(item.quantity),
-                  unit: normalizeUnit(item.unit),
+                  quantity: item.quantity,
+                  unit: item.unit,
                   category: item.category,
                 },
               })
@@ -268,36 +250,10 @@ export async function POST(request: Request) {
         });
 
         // Process ingredients for new list
-        const ingredientMap = new Map<string, {
-          ingredientId: number;
-          quantity: number;
-          unit: string;
-          category: string;
-        }>();
-        
-        if (savedList) {
-          savedList.recipes.forEach((recipe) => {
-            recipe.ingredients.forEach((ri) => {
-              const key = `${ri.ingredient.id}-${ri.unit}`;
-              if (ingredientMap.has(key)) {
-                const existing = ingredientMap.get(key)!;
-                existing.quantity += ri.quantity || 0;
-              } else {
-                ingredientMap.set(key, {
-                  ingredientId: ri.ingredient.id,
-                  quantity: ri.quantity || 0,
-                  unit: ri.unit || "unit",
-                  category: ri.ingredient.category || "groceries",
-                });
-              }
-            });
-          });
-        }
-
-        // Create ingredients
-        if (ingredientMap.size > 0) {
+        const aggregated = savedList ? aggregateIngredients(savedList.recipes) : [];
+        if (aggregated.length > 0) {
           await Promise.all(
-            Array.from(ingredientMap.values()).map((item) =>
+            aggregated.map((item) =>
               prisma.savedIngredient.upsert({
                 where: {
                   savedListId_ingredientId: {
@@ -308,14 +264,14 @@ export async function POST(request: Request) {
                 create: {
                   savedListId: savedList!.id,
                   ingredientId: item.ingredientId,
-                  quantity: normalizeQuantity(item.quantity),
-                  unit: normalizeUnit(item.unit),
+                  quantity: item.quantity,
+                  unit: item.unit,
                   category: item.category,
                   checked: false,
                 },
                 update: {
-                  quantity: normalizeQuantity(item.quantity),
-                  unit: normalizeUnit(item.unit),
+                  quantity: item.quantity,
+                  unit: item.unit,
                   category: item.category,
                 },
               })

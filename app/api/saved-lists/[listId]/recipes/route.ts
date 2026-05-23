@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/auth";
-import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
+import { aggregateIngredients } from "@/lib/saved-lists";
 
 export async function POST(
   request: Request,
@@ -53,49 +53,33 @@ export async function POST(
     });
 
     // Merge and categorize ingredients
-    const ingredientMap = new Map();
-    recipes.forEach((recipe) => {
-      recipe.ingredients.forEach((ri) => {
-        const key = `${ri.ingredient.id}-${ri.unit}`;
-        if (ingredientMap.has(key)) {
-          const existing = ingredientMap.get(key);
-          existing.quantity += ri.quantity || 0;
-        } else {
-          ingredientMap.set(key, {
-            ingredientId: ri.ingredient.id,
-            quantity: ri.quantity || 0,
-            unit: ri.unit || "unit",
-            category: ri.ingredient.category || "groceries",
-          });
-        }
-      });
-    });
-
-    // Create or update saved ingredients
-    await Promise.all(
-      Array.from(ingredientMap.values()).map((item) =>
-        prisma.savedIngredient.upsert({
-          where: {
-            savedListId_ingredientId: {
+    const aggregated = aggregateIngredients(recipes);
+    if (aggregated.length > 0) {
+      await Promise.all(
+        aggregated.map((item) =>
+          prisma.savedIngredient.upsert({
+            where: {
+              savedListId_ingredientId: {
+                savedListId: parseInt(params.listId),
+                ingredientId: item.ingredientId,
+              },
+            },
+            create: {
               savedListId: parseInt(params.listId),
               ingredientId: item.ingredientId,
+              quantity: item.quantity,
+              unit: item.unit,
+              category: item.category,
             },
-          },
-          create: {
-            savedListId: parseInt(params.listId),
-            ingredientId: item.ingredientId,
-            quantity: normalizeQuantity(item.quantity),
-            unit: normalizeUnit(item.unit),
-            category: item.category,
-          },
-          update: {
-            quantity: normalizeQuantity(item.quantity),
-            unit: normalizeUnit(item.unit),
-            category: item.category,
-          },
-        })
-      )
-    );
+            update: {
+              quantity: item.quantity,
+              unit: item.unit,
+              category: item.category,
+            },
+          })
+        )
+      );
+    }
 
     // Fetch the updated list with all related data
     const updatedList = await prisma.savedList.findUnique({
