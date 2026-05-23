@@ -32,6 +32,8 @@ model ShoppingList {
   checked   Boolean @default(false)
   createdAt DateTime @default(now())
   userId    Int?
+
+  @@ignore
 }
 
 model SavedList {
