@@ -47,19 +47,6 @@ export interface SavedList {
   ingredients: SavedIngredient[];
 }
 
-export interface ShoppingListItem {
-  ingredient: string;
-  quantity: number;
-  unit: string;
-  recipes: string[];
-  checked: boolean;
-}
-
-export interface ShoppingList {
-  selectedRecipes: Recipe[];
-  items: ShoppingListItem[];
-}
-
 export interface PreviewMetadata {
   title?: string;
   description?: string;

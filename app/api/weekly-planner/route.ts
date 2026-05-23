@@ -86,30 +86,30 @@ export async function POST(request: NextRequest) {
 
     checkTimeout();
 
-    // Get checked ingredients with timeout
+    // Get checked ingredients from SavedIngredient through SavedList
     const checkedIngredients = await withTimeout(
-      prisma.shoppingList.findMany({
+      prisma.savedIngredient.findMany({
         where: {
-          userId,
           checked: true,
+          savedList: {
+            userId,
+          },
         },
-        take: 50, // Limit to prevent excessive processing
+        include: {
+          ingredient: {
+            select: {
+              name: true,
+            },
+          },
+        },
+        take: 50,
       }),
-      5000 // 5 second timeout
+      5000
     );
 
-    // Extract ingredient names from the JSON data
-    const checkedIngredientNames: string[] = [];
-    checkedIngredients.forEach((item) => {
-      try {
-        const data = item.data as { name?: string };
-        if (data && data.name) {
-          checkedIngredientNames.push(data.name.toLowerCase());
-        }
-      } catch (error) {
-        console.error("Error parsing shopping list item:", error);
-      }
-    });
+    const checkedIngredientNames: string[] = checkedIngredients.map(
+      (item) => item.ingredient.name.toLowerCase()
+    );
 
     checkTimeout();
 

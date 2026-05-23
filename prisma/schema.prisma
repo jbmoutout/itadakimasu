@@ -25,15 +25,6 @@ model Recipe {
 
   @@unique([url, userId])
 }
-
-model ShoppingList {
-  id        Int      @id @default(autoincrement())
-  data      Json
-  checked   Boolean @default(false)
-  createdAt DateTime @default(now())
-  userId    Int?
-}
-
 model SavedList {
   id          Int              @id @default(autoincrement())
   name        String           @default("Shopping List")
