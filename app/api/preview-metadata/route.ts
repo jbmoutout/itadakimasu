@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
-import { prisma } from '../../lib/prisma';
+import { prisma } from '@/lib/prisma';
 
 
 export async function GET(request: Request) {

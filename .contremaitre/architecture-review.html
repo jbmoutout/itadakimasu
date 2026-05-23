@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — Itadakimasu</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .badge-strong { background: #059669; color: #fff; }
+      .badge-worth { background: #d97706; color: #fff; }
+      .badge-spec { background: #64748b; color: #fff; }
+      .card-hover { transition: box-shadow 0.2s; }
+      .card-hover:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.08); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <header class="flex items-center justify-between border-b border-slate-200 pb-6">
+        <div>
+          <h1 class="text-3xl font-serif tracking-tight">Architecture review</h1>
+          <p class="text-sm text-slate-500 mt-1">Itadakimasu &mdash; 22 May 2026</p>
+        </div>
+        <div class="flex gap-4 text-xs">
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 border border-slate-400 bg-white rounded"></span> module</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-6 h-0 border-t-2 border-dashed border-slate-400"></span> seam</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-0 border-t-2 border-red-600"></span> leakage</span>
+          <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 bg-slate-800 rounded"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- Candidate 1: Prisma Access Seam -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 card-hover">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif">Consolidate the Prisma access seam</h2>
+            <div class="flex gap-2">
+              <span class="badge-strong text-xs px-2 py-0.5 rounded-full font-medium">Strong</span>
+              <span class="text-xs px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-xs font-mono text-slate-600">
+            <span>lib/prisma.ts</span>
+            <span>app/lib/prisma.ts</span>
+            <span>lib/weekly-plan-history.ts</span>
+            <span>app/api/**/*/route.ts</span>
+            <span>prisma/schema.prisma</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    subgraph "app/"
+                      A["Route handlers"] --> B["app/lib/prisma.ts<br/><small>(logging ON)</small>"]
+                    end
+                    subgraph "lib/"
+                      C["weekly-plan-history.ts"] --> D["lib/prisma.ts<br/><small>(logging OFF)</small>"]
+                      C -.raw .-> E[Raw SQL<br/>$executeRaw / $queryRaw]
+                    end
+                    F[Prisma schema] -.-> B
+                    F -.-> D
+                    classDef leak fill:#fef2f2,stroke:#dc2626
+                    class C,E leak
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Two singletons, raw SQL bypassing typed client</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    subgraph "One seam"
+                      A["Route handlers<br/>plan-history module<br/>scripts"] --> B["lib/prisma.ts"]
+                      B --> C[PrismaClient]
+                    end
+                    B -.->|"env guard"| D["log: ['query']<br/>only in dev"]
+                    classDef deep fill:#0f172a,color:#fff
+                    class B deep
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">One singleton, environment-guarded logging</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Problem</p>
+              <p class="text-slate-600">Two Prisma singletons with inconsistent logging, raw SQL in 7 functions that bypass typed API.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Solution</p>
+              <p class="text-slate-600">Delete <code class="text-xs font-mono bg-slate-100 px-1">app/lib/prisma.ts</code>, port <code class="text-xs font-mono bg-slate-100 px-1">weekly-plan-history.ts</code> to typed Prisma client, add dev-only logging guard.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Wins</p>
+              <ul class="text-slate-600 text-xs space-y-0.5 list-disc list-inside">
+                <li>locality: one import path for all Prisma access</li>
+                <li>leverage: typed API replaces 7 raw-SQL call sites</li>
+                <li>interface shrinks; no surprise-logging in prod</li>
+                <li>deletion test: two files become one</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- Candidate 2: Legacy ShoppingList model -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 card-hover">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif">Delete the legacy ShoppingList model</h2>
+            <div class="flex gap-2">
+              <span class="badge-strong text-xs px-2 py-0.5 rounded-full font-medium">Strong</span>
+              <span class="text-xs px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-xs font-mono text-slate-600">
+            <span>prisma/schema.prisma</span>
+            <span>app/api/last-shopping-list/route.ts</span>
+            <span>app/api/update-shopping-list/route.ts</span>
+            <span>lib/weekly-planner-weights.ts</span>
+            <span>lib/weekly-plan-history.ts</span>
+            <span>app/api/weekly-planner/route.ts</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    subgraph "Active surface"
+                      SL[SavedList<br/>SavedIngredient] --> UC[UX: Cooking page]
+                    end
+                    subgraph "Legacy cling-ons"
+                      LSL[last-shopping-list route] --> OLD[ShoppingList<br/>JSON blob model]
+                      USL[update-shopping-list route] --> OLD
+                      WP[weekly-planner route] --> OLD
+                    end
+                    OLD -.->|"planner reads<br/>checked items here"| WP
+                    classDef leak stroke:#dc2626,stroke-width:2px
+                    class OLD,WP leak
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Planner sources checked-ingredient context from legacy model</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    SL[SavedList &amp; SavedIngredient] --> UC[UX: Cooking page]
+                    SL --> WP[weekly-planner route]
+                    subgraph "Deleted"
+                      LSL["last-shopping-list route"]
+                      USL["update-shopping-list route"]
+                      OLD["ShoppingList model"]
+                    end
+                    classDef deleted fill:#f1f5f9,stroke:#94a3b8,stroke-dasharray:4 4
+                    class LSL,USL,OLD deleted
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Planner reads from SavedIngredient; dead routes &amp; model removed</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Problem</p>
+              <p class="text-slate-600">ShoppingList JSON-blob model duplicates SavedList/SavedIngredient; planner reads checked items from dead storage.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Solution</p>
+              <p class="text-slate-600">Delete <code class="text-xs font-mono bg-slate-100 px-1">ShoppingList</code> model, its two routes, and port planner context to <code class="text-xs font-mono bg-slate-100 px-1">SavedIngredient.checked</code>.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Wins</p>
+              <ul class="text-slate-600 text-xs space-y-0.5 list-disc list-inside">
+                <li>locality: one model family for shopping state</li>
+                <li>deletion test: 2 routes + 1 model + raw SQL vanish</li>
+                <li>leverage: planner context is just a Prisma query</li>
+                <li>data integrity: no desync between checked states</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-start gap-2">
+            <span class="font-bold text-amber-600">ADR-0001 relevant</span>
+            <span class="text-amber-700">Does not contradict the auth seam. Planner currently reads <code>ShoppingList.checked</code> without user-ownership verification &mdash; the consolidation to <code>SavedIngredient</code> would naturally gain ownership checks through its FK to <code>SavedList → User</code>.</span>
+          </div>
+        </article>
+
+        <!-- Candidate 3: Inline AI pipeline in route handlers -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 card-hover">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif">Extract the AI pipeline behind one seam</h2>
+            <div class="flex gap-2">
+              <span class="badge-worth text-xs px-2 py-0.5 rounded-full font-medium">Worth exploring</span>
+              <span class="text-xs px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">ports &amp; adapters</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-xs font-mono text-slate-600">
+            <span>app/api/weekly-planner/route.ts</span>
+            <span>app/api/weekly-planner/alternatives/route.ts</span>
+            <span>app/api/extract-ingredients/route.ts</span>
+            <span>app/api/extract-ingredients/extractor.ts</span>
+            <span>app/lib/anthropic.ts</span>
+            <span>lib/weekly-planner-weights.ts</span>
+            <span>lib/weekly-plan-history.ts</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    WP["weekly-planner/route.ts"] --> ANTH["app/lib/anthropic.ts"]
+                    WP --> HIST["lib/weekly-plan-history.ts"]
+                    WP --> WGT["lib/weekly-planner-weights.ts"]
+                    ALT["alternatives/route.ts"] --> ANTH
+                    ALT --> HIST
+                    ALT --> WGT
+                    EI["extract-ingredients/route.ts"] --> ANTH
+                    EI -.-> EXT["extractor.ts<br/><small>(duplicate logic)</small>"]
+                    EXT --> ANTH
+                    classDef leak fill:#fef2f2,stroke:#dc2626
+                    class WP,ALT,EI,EXT leak
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Three routes + a helper all import Anthropic directly. Prompting, schema, retry, and error handling repeated.</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart LR
+                    subgraph "Behind the seam"
+                      AI["lib/ai-pipeline.ts"]
+                      AI -->|"generatePlan()"| ANTH["Anthropic adapter"]
+                      AI -->|"extractIngredients()"| ANTH
+                      AI -->|"generateAlternatives()"| ANTH
+                      AI --> HIST["plan-history<br/><small>(internal call)</small>"]
+                      AI --> WGT["planner-weights<br/><small>(internal call)</small>"]
+                    end
+                    WP["weekly-planner route"] --> AI
+                    ALT["alternatives route"] --> AI
+                    EI["extract-ingredients route"] --> AI
+                    classDef deep fill:#0f172a,color:#fff
+                    class AI deep
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">One seam with three named operations; Anthropic adapter swappable</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Problem</p>
+              <p class="text-slate-600">Three route handlers each build AI prompts, call Anthropic, parse responses, and handle errors independently.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Solution</p>
+              <p class="text-slate-600">Extract a <code class="text-xs font-mono bg-slate-100 px-1">lib/ai-pipeline.ts</code> module exposing <code class="text-xs font-mono bg-slate-100 px-1">generatePlan()</code>, <code class="text-xs font-mono bg-slate-100 px-1">extractIngredients()</code>, <code class="text-xs font-mono bg-slate-100 px-1">generateAlternatives()</code> behind one Anthropic adapter.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Wins</p>
+              <ul class="text-slate-600 text-xs space-y-0.5 list-disc list-inside">
+                <li>locality: prompt schema, retry, error handling in one place</li>
+                <li>leverage: one interface for 3 call sites + future AI features</li>
+                <li>interface shrinks; route handlers become request-parsers only</li>
+                <li>testability: swap Anthropic for in-memory adapter</li>
+                <li>eliminates <code>extractor.ts</code> duplication</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- Candidate 4: SuggestedRecipes inline in SavedLists -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 card-hover">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif">Extract the recipe-scoring module from SavedLists</h2>
+            <div class="flex gap-2">
+              <span class="badge-worth text-xs px-2 py-0.5 rounded-full font-medium">Worth exploring</span>
+              <span class="text-xs px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-xs font-mono text-slate-600">
+            <span>app/components/shopping/SavedLists.tsx</span>
+            <span>app/page.tsx</span>
+            <span>app/api/saved-lists/route.ts</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart TB
+                    subgraph "SavedLists.tsx (280+ lines)"
+                      TI[Tab: Ingredients]
+                      TR[Tab: Recipes]
+                      SR["SuggestedRecipes<br/><small>inline scoring + render</small>"]
+                    end
+                    SR --> DASH["app/page.tsx<br/><small>owns filter/submit</small>"]
+                    classDef leak fill:#fef2f2,stroke:#dc2626
+                    class SR leak
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Scoring algorithm is embedded inside a 280+ line component</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <pre class="mermaid">
+                  flowchart TB
+                    subgraph "SavedLists.tsx"
+                      TI[Tab: Ingredients]
+                      TR[Tab: Recipes]
+                      SR["&lt;SuggestedRecipes<br/>   scoreFn={scorer} /&gt;"]
+                    end
+                    subgraph "lib/recipe-scorer.ts"
+                      SC["scoreByIngredientOverlap()"]
+                    end
+                    SR --> SC
+                    classDef deep fill:#0f172a,color:#fff
+                    class SC deep
+                </pre>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Scoring is a pure function behind a named seam</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Problem</p>
+              <p class="text-slate-600">Recipe scoring is not testable independently &mdash; it's embedded inside a 280-line component alongside rendering logic.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Solution</p>
+              <p class="text-slate-600">Extract <code class="text-xs font-mono bg-slate-100 px-1">scoreByIngredientOverlap(recipes, checkedIngredients): ScoredRecipe[]</code> as a pure function module.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Wins</p>
+              <ul class="text-slate-600 text-xs space-y-0.5 list-disc list-inside">
+                <li>locality: scoring logic concentrates in one pure function</li>
+                <li>leverage: one interface, unit-testable without React</li>
+                <li>deletion test: scoring moves from 280-line component to 30-line module</li>
+                <li>reusable: planner alternatives could consume same scorer</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <!-- Candidate 5: Dead component cleanup -->
+        <article class="bg-white rounded-xl border border-slate-200 p-6 space-y-4 card-hover">
+          <div class="flex items-start justify-between">
+            <h2 class="text-xl font-serif">Delete dead components and duplicate shadcn files</h2>
+            <div class="flex gap-2">
+              <span class="badge-strong text-xs px-2 py-0.5 rounded-full font-medium">Strong</span>
+              <span class="text-xs px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">in-process</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3 text-xs font-mono text-slate-600">
+            <span>app/components/shopping/ShoppingList.tsx</span>
+            <span>app/components/recipes/RecipeList.tsx</span>
+            <span>app/components/ui/checkbox.tsx</span>
+            <span>app/components/ui/badge.tsx</span>
+            <span>components/ui/scroll-area.tsx</span>
+            <span>components/ui/sheet.tsx</span>
+            <span>components/Rating.tsx</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-6">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-wrap gap-2">
+                <span class="text-xs font-mono bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">ShoppingList.tsx</span>
+                <span class="text-xs font-mono bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">RecipeList.tsx</span>
+                <span class="text-xs font-mono bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">Rating.tsx</span>
+                <span class="text-xs font-mono bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">scroll-area.tsx</span>
+                <span class="text-xs font-mono bg-red-50 text-red-700 px-2 py-1 rounded border border-red-200">sheet.tsx</span>
+                <span class="text-xs font-mono bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200">app/components/ui/checkbox.tsx</span>
+                <span class="text-xs font-mono bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200">app/components/ui/badge.tsx</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">7 files consuming attention, some with stale imports</p>
+            </div>
+            <div>
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="rounded-lg border border-slate-200 bg-white p-4">
+                <div class="flex items-center justify-center h-20 text-slate-400 text-sm">
+                  <span class="text-2xl">&empty;</span>&ensp;7 files deleted
+                </div>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Zero dead code in the tree</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Problem</p>
+              <p class="text-slate-600">7 files are dead or duplicated: they consume developer attention, create stale import paths, and add noise to refactoring tools.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Solution</p>
+              <p class="text-slate-600">Delete the 5 orphaned files and 2 duplicates. The <code class="text-xs font-mono bg-slate-100 px-1">@/components/ui/*</code> alias already resolves to the root-level canonical copies.</p>
+            </div>
+            <div>
+              <p class="font-medium text-slate-700 text-xs uppercase tracking-wider">Wins</p>
+              <ul class="text-slate-600 text-xs space-y-0.5 list-disc list-inside">
+                <li>deletion test: 7 files vanish, zero broken imports</li>
+                <li>locality: one canonical copy of each shadcn component</li>
+                <li>interface shrinks; grep results are noise-free</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="bg-slate-800 rounded-xl p-8 text-white space-y-4">
+        <h2 class="text-2xl font-serif">Top recommendation</h2>
+        <p class="text-slate-300">
+          <a href="#candidates" class="text-emerald-400 underline hover:text-emerald-300">Consolidate the Prisma access seam</a> &mdash;
+          it unblocks every other deepening. Until the data-access seam is unified, the AI pipeline extraction, legacy model cleanup, and any new feature all risk importing from the wrong <code class="text-xs font-mono bg-slate-700 px-1">prisma.ts</code> or reaching for raw SQL. One singleton with environment-guarded logging, then port the 7 raw-SQL functions to typed Prisma API. This single change produces the highest leverage-to-effort ratio in the codebase.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

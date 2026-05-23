@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '../../../lib/prisma';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { SignJWT } from 'jose';
 import { SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS, SESSION_JWT_EXPIRATION } from '@/lib/auth';
