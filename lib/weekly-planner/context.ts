@@ -5,6 +5,21 @@ import {
   RecipeIngredientWithSeason,
 } from "@/types";
 
+export interface AlternativesRecipeData {
+  id: number;
+  title: string;
+  description: string;
+  url: string;
+  image: string;
+  starred: boolean;
+  ingredients: Array<{
+    name: string;
+    quantity: number;
+    unit: string;
+    seasons: number[];
+  }>;
+}
+
 export function buildRecipeData(
   recipes: RecipeWithIngredients[],
   weights: RecipeWeight[],
@@ -42,5 +57,30 @@ export function buildRecipeData(
         starred: recipe.starred,
       };
     }
+  );
+}
+
+export function buildRecipeContext(
+  recipes: RecipeWithIngredients[]
+): AlternativesRecipeData[] {
+  return recipes.map(
+    (recipe: RecipeWithIngredients) => ({
+      id: recipe.id,
+      title: recipe.title || "Untitled Recipe",
+      description: recipe.description || "",
+      url: recipe.url,
+      image: recipe.image || "",
+      starred: recipe.starred,
+      ingredients: recipe.ingredients.map(
+        (ri: RecipeIngredientWithSeason) => ({
+          name: ri.ingredient.name,
+          quantity: ri.quantity || 0,
+          unit: ri.unit || "unit",
+          seasons: ri.ingredient.seasons.map(
+            (s: { month: number }) => s.month
+          ),
+        })
+      ),
+    })
   );
 }

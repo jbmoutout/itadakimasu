@@ -11,7 +11,7 @@ import {
   RecipeIngredientWithSeason,
 } from "@/types";
 import { withTimeout } from "./timeout";
-import { buildRecipeData } from "./context";
+import { buildRecipeData, buildRecipeContext } from "./context";
 import { buildMainPlannerPrompt, buildAlternativesPrompt } from "./prompt";
 import { selectFallbackRecipes, parseRecipeIdsFromAIResponse } from "./fallback";
 import { formatRecipeResponse } from "./format";
@@ -265,26 +265,7 @@ export async function generateAlternatives(
 
   const currentMonth = new Date().getMonth() + 1;
 
-  const recipeData = availableRecipes.map(
-    (recipe: RecipeWithIngredients) => ({
-      id: recipe.id,
-      title: recipe.title || "Untitled Recipe",
-      description: recipe.description || "",
-      url: recipe.url,
-      image: recipe.image || "",
-      starred: recipe.starred,
-      ingredients: recipe.ingredients.map(
-        (ri: RecipeIngredientWithSeason) => ({
-          name: ri.ingredient.name,
-          quantity: ri.quantity || 0,
-          unit: ri.unit || "unit",
-          seasons: ri.ingredient.seasons.map(
-            (s: { month: number }) => s.month
-          ),
-        })
-      ),
-    })
-  );
+  const recipeData = buildRecipeContext(availableRecipes);
 
   const selectionPrompt = buildAlternativesPrompt(recipeData, currentMonth, rejectedRecipeId);
 
