@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { generateAlternatives } from "@/lib/weekly-planner";
 
 export async function POST(request: Request) {
@@ -25,5 +26,7 @@ export async function POST(request: Request) {
       { error: "Failed to generate alternatives" },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No recipes found" }, { status: 404 });
     }
 
-    if (error instanceof Error && error.message.includes("timed out")) {
+    if (error instanceof Error && error.message.includes("timeout")) {
       return NextResponse.json(
         {
           error: "Request timed out. Please try again.",
