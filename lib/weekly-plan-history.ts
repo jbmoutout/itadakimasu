@@ -15,9 +15,6 @@ export interface RecipeWeight {
 
 /**
  * Clean up old weekly plan history records (older than 1 month)
- *
- * @internal Used by lib/weekly-planner.ts and app/api/cleanup/route.ts.
- *           Migration boundary — do not add new external consumers.
  */
 export async function cleanupWeeklyPlanHistory() {
   try {
@@ -48,9 +45,6 @@ export async function cleanupWeeklyPlanHistory() {
 
 /**
  * Get recipe usage history for a user
- *
- * @internal Used by lib/weekly-planner.ts only.
- *           Do not import from app/ routes.
  */
 export async function getRecipeHistory(
   userId: number
