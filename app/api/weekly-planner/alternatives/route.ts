@@ -3,6 +3,11 @@ import { getUserId } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import anthropic from "@/app/lib/anthropic";
 import { RecipeWithIngredients, RecipeIngredientWithSeason } from "@/types";
+import {
+  getMonthName,
+  calculateHealthScore,
+  calculateIngredientEfficiencyScore,
+} from "@/lib/planner/format";
 
 interface AlternativeRecipe {
   recipeId: number;
@@ -86,7 +91,7 @@ export async function POST(request: Request) {
     const selectionPrompt = `
 You are a culinary expert and nutritionist specializing in French seasonal cooking. A user has rejected a recipe from their weekly meal plan and needs 3 alternative options.
 
-Current month: ${currentMonth} (France seasonal context)
+Current month: ${currentMonth} (${getMonthName(currentMonth)})
 Rejected recipe ID: ${rejectedRecipeId}
 
 CRITERIA (in order of importance):
@@ -178,6 +183,13 @@ Focus on providing diverse, healthy, and practical alternatives that complement 
           throw new Error(`Recipe ${selection.recipeId} not found`);
         }
 
+        const seasonalIngredients = recipe.ingredients.filter(
+          (ri: RecipeIngredientWithSeason) =>
+            ri.ingredient.seasons.some(
+              (season: { month: number }) => season.month === currentMonth
+            )
+        );
+
         return {
           id: recipe.id,
           title: recipe.title || "Untitled Recipe",
@@ -200,6 +212,11 @@ Focus on providing diverse, healthy, and practical alternatives that complement 
           seasonalScore: selection.seasonalScore,
           healthScore: selection.healthScore,
           ingredientEfficiencyScore: selection.ingredientEfficiencyScore,
+          serverHealthScore: calculateHealthScore(seasonalIngredients),
+          serverIngredientEfficiencyScore: calculateIngredientEfficiencyScore(
+            seasonalIngredients,
+            []
+          ),
         };
       }
     );
