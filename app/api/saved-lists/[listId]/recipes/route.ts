@@ -13,6 +13,13 @@ export async function POST(
     const { recipeIds } = await request.json();
     const listId = parseInt(params.listId);
 
+    if (!recipeIds?.length) {
+      return NextResponse.json(
+        { error: "No recipes provided" },
+        { status: 400 }
+      );
+    }
+
     // Verify the list belongs to the user
     const list = await prisma.savedList.findFirst({
       where: { id: listId, userId },
@@ -25,6 +32,21 @@ export async function POST(
       );
     }
 
+    // Ownership guard: every requested recipe must belong to the caller before
+    // it is connected to the list. Reject the whole request otherwise.
+    const requestedIds = Array.from(new Set<number>(recipeIds));
+    const ownedRecipes = await prisma.recipe.findMany({
+      where: { id: { in: requestedIds }, userId },
+      select: { id: true },
+    });
+
+    if (ownedRecipes.length !== requestedIds.length) {
+      return NextResponse.json(
+        { error: "No valid recipes found for the current user" },
+        { status: 404 }
+      );
+    }
+
     // Connect the recipes and recompute the list's Saved Ingredients from all of
     // its recipes — recompute-from-truth, so totals accumulate across the whole
     // list rather than being overwritten by the newly-added subset.
@@ -32,7 +54,7 @@ export async function POST(
       await tx.savedList.update({
         where: { id: listId },
         data: {
-          recipes: { connect: recipeIds.map((id: number) => ({ id })) },
+          recipes: { connect: requestedIds.map((id) => ({ id })) },
         },
       });
       await recomputeSavedListIngredients(tx, listId);

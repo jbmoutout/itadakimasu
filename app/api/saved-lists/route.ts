@@ -64,13 +64,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Guard: at least one of the requested recipes must belong to the user.
-    const validRecipes = await prisma.recipe.findMany({
-      where: { id: { in: recipeIds }, userId },
+    // Ownership guard: every requested recipe must belong to the caller before
+    // it is connected to a list. Reject the whole request otherwise — never
+    // connect a recipe the user does not own.
+    const requestedIds = Array.from(new Set<number>(recipeIds));
+    const ownedRecipes = await prisma.recipe.findMany({
+      where: { id: { in: requestedIds }, userId },
       select: { id: true },
     });
 
-    if (validRecipes.length === 0) {
+    if (ownedRecipes.length !== requestedIds.length) {
       return NextResponse.json(
         { error: "No valid recipes found for the current user" },
         { status: 404 }
@@ -94,7 +97,7 @@ export async function POST(request: Request) {
         await tx.savedList.update({
           where: { id: listId },
           data: {
-            recipes: { connect: recipeIds.map((id: number) => ({ id })) },
+            recipes: { connect: requestedIds.map((id) => ({ id })) },
           },
         });
 
@@ -105,7 +108,7 @@ export async function POST(request: Request) {
       const created = await tx.savedList.create({
         data: {
           userId,
-          recipes: { connect: recipeIds.map((id: number) => ({ id })) },
+          recipes: { connect: requestedIds.map((id) => ({ id })) },
         },
         select: { id: true },
       });
