@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/auth";
+import { recomputeSavedListIngredients } from "@/lib/saved-list-recompute";
 
 export async function DELETE(
   request: Request,
@@ -14,13 +15,7 @@ export async function DELETE(
 
     // Verify the saved list belongs to the user
     const savedList = await prisma.savedList.findFirst({
-      where: {
-        id: listId,
-        userId: userId,
-      },
-      include: {
-        ingredients: true,
-      },
+      where: { id: listId, userId },
     });
 
     if (!savedList) {
@@ -30,44 +25,15 @@ export async function DELETE(
       );
     }
 
-    // Get the recipe's ingredients
-    const recipe = await prisma.recipe.findUnique({
-      where: { id: recipeId },
-      include: {
-        ingredients: {
-          include: {
-            ingredient: true,
-          },
-        },
-      },
-    });
-
-    if (!recipe) {
-      return NextResponse.json(
-        { error: "Recipe not found" },
-        { status: 404 }
-      );
-    }
-
-    // Remove ingredients that were added by this recipe
-    const recipeIngredientIds = recipe.ingredients.map(ri => ri.ingredientId);
-    await prisma.savedIngredient.deleteMany({
-      where: {
-        savedListId: listId,
-        ingredientId: {
-          in: recipeIngredientIds,
-        },
-      },
-    });
-
-    // Remove the recipe from the saved list
-    await prisma.savedList.update({
-      where: { id: listId },
-      data: {
-        recipes: {
-          disconnect: { id: recipeId },
-        },
-      },
+    // Disconnect the recipe and recompute the list's Saved Ingredients from the
+    // recipes that remain. Recompute (not delete-by-membership) is what keeps a
+    // shared ingredient's total intact when another recipe still contributes it.
+    await prisma.$transaction(async (tx) => {
+      await tx.savedList.update({
+        where: { id: listId },
+        data: { recipes: { disconnect: { id: recipeId } } },
+      });
+      await recomputeSavedListIngredients(tx, listId);
     });
 
     return NextResponse.json({ success: true });
@@ -77,7 +43,5 @@ export async function DELETE(
       { error: "Failed to remove recipe from saved list" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
-} 
+}
