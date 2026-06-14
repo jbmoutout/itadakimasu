@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserId } from "@/lib/auth";
-import { normalizeQuantity, normalizeUnit } from "@/lib/ingredients";
+import { recomputeSavedListIngredients } from "@/lib/saved-list-recompute";
 
 export async function POST(
   request: Request,
@@ -11,13 +11,11 @@ export async function POST(
     const userId = getUserId(request);
 
     const { recipeIds } = await request.json();
+    const listId = parseInt(params.listId);
 
     // Verify the list belongs to the user
     const list = await prisma.savedList.findFirst({
-      where: {
-        id: parseInt(params.listId),
-        userId,
-      },
+      where: { id: listId, userId },
     });
 
     if (!list) {
@@ -27,94 +25,29 @@ export async function POST(
       );
     }
 
-    // Get all ingredients from the selected recipes
-    const recipes = await prisma.recipe.findMany({
-      where: {
-        id: { in: recipeIds },
-        userId,
-      },
-      include: {
-        ingredients: {
-          include: {
-            ingredient: true,
-          },
+    // Connect the recipes and recompute the list's Saved Ingredients from all of
+    // its recipes — recompute-from-truth, so totals accumulate across the whole
+    // list rather than being overwritten by the newly-added subset.
+    await prisma.$transaction(async (tx) => {
+      await tx.savedList.update({
+        where: { id: listId },
+        data: {
+          recipes: { connect: recipeIds.map((id: number) => ({ id })) },
         },
-      },
-    });
-
-    // Add recipes to the list
-    await prisma.savedList.update({
-      where: { id: parseInt(params.listId) },
-      data: {
-        recipes: {
-          connect: recipeIds.map((id: number) => ({ id })),
-        },
-      },
-    });
-
-    // Merge and categorize ingredients
-    const ingredientMap = new Map();
-    recipes.forEach((recipe) => {
-      recipe.ingredients.forEach((ri) => {
-        const key = `${ri.ingredient.id}-${ri.unit}`;
-        if (ingredientMap.has(key)) {
-          const existing = ingredientMap.get(key);
-          existing.quantity += ri.quantity || 0;
-        } else {
-          ingredientMap.set(key, {
-            ingredientId: ri.ingredient.id,
-            quantity: ri.quantity || 0,
-            unit: ri.unit || "unit",
-            category: ri.ingredient.category || "groceries",
-          });
-        }
       });
+      await recomputeSavedListIngredients(tx, listId);
     });
-
-    // Create or update saved ingredients
-    await Promise.all(
-      Array.from(ingredientMap.values()).map((item) =>
-        prisma.savedIngredient.upsert({
-          where: {
-            savedListId_ingredientId: {
-              savedListId: parseInt(params.listId),
-              ingredientId: item.ingredientId,
-            },
-          },
-          create: {
-            savedListId: parseInt(params.listId),
-            ingredientId: item.ingredientId,
-            quantity: normalizeQuantity(item.quantity),
-            unit: normalizeUnit(item.unit),
-            category: item.category,
-          },
-          update: {
-            quantity: normalizeQuantity(item.quantity),
-            unit: normalizeUnit(item.unit),
-            category: item.category,
-          },
-        })
-      )
-    );
 
     // Fetch the updated list with all related data
     const updatedList = await prisma.savedList.findUnique({
-      where: { id: parseInt(params.listId) },
+      where: { id: listId },
       include: {
         recipes: {
           include: {
-            ingredients: {
-              include: {
-                ingredient: true,
-              },
-            },
+            ingredients: { include: { ingredient: true } },
           },
         },
-        ingredients: {
-          include: {
-            ingredient: true,
-          },
-        },
+        ingredients: { include: { ingredient: true } },
       },
     });
 
@@ -125,7 +58,5 @@ export async function POST(
       { error: "Failed to add recipes to list" },
       { status: 500 }
     );
-  } finally {
-    await prisma.$disconnect();
   }
-} 
+}

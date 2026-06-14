@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
     "postinstall": "prisma generate",
     "clean:ingredients": "ts-node --project scripts/tsconfig.json scripts/clean-ingredients.ts",
     "ingest:seasonal": "ts-node --project scripts/tsconfig.json scripts/ingest-seasonal-data.ts",
@@ -55,6 +56,7 @@
     "prisma": "^6.4.1",
     "tailwindcss": "^3.4.13",
     "ts-node": "^10.9.2",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.8"
   }
 }
